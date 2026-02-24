@@ -42,14 +42,14 @@ footer{margin-top:auto;padding:20px;opacity:.38;font-size:.8rem}
 </head>
 <body>
 <header>
-  <h1>&#9654; Video Reverser <span class="badge">TURBO</span></h1>
-  <p>Reverse any video in seconds &mdash; powered by FFmpeg WebAssembly &mdash; 100% private</p>
+  <h1>&#9654; Video Reverser <span class="badge">FAST</span></h1>
+  <p>Reverse any video quickly in your browser &mdash; 100% private, no uploads</p>
 </header>
 <div class="container">
   <div class="upload-box" id="dropZone" onclick="document.getElementById('fileInput').click()">
     <div class="upload-icon">&#127909;</div>
     <h2>Drop video here or click to select</h2>
-    <p>Supports MP4, WebM, MOV, AVI, MKV &bull; Processed locally via FFmpeg WASM</p>
+    <p>Supports MP4, WebM, MOV, AVI, MKV &bull; Works locally in your browser</p>
     <input type="file" id="fileInput" accept="video/*">
   </div>
 
@@ -57,14 +57,14 @@ footer{margin-top:auto;padding:20px;opacity:.38;font-size:.8rem}
     <p style="margin-bottom:10px;opacity:.65;font-size:.9rem">Original:</p>
     <video id="originalVideo" controls></video>
     <div class="actions" style="margin-top:14px">
-      <button class="btn btn-primary" id="reverseBtn">&#9889; Reverse Video Fast</button>
+      <button class="btn btn-primary" id="reverseBtn">&#9889; Reverse Video</button>
       <button class="btn btn-secondary" id="resetBtn">Choose Another</button>
     </div>
   </div>
 
   <div class="progress-wrap" id="progressWrap">
     <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
-    <div class="status" id="statusText">Initializing FFmpeg...</div>
+    <div class="status" id="statusText">Processing...</div>
   </div>
 
   <div class="result-section" id="resultSection">
@@ -79,145 +79,13 @@ footer{margin-top:auto;padding:20px;opacity:.38;font-size:.8rem}
   <div class="speed-note" id="speedNote" style="display:none"></div>
 
   <div class="info-box">
-    <b>Why so fast?</b> Uses <b>FFmpeg compiled to WebAssembly</b> &mdash; native C-speed video processing in your browser. A 30s video reverses in ~3-8 seconds. <b>No data ever leaves your device.</b>
+    <b>How it works:</b> Extracts frames using Canvas API, reverses them, and re-encodes with MediaRecorder &mdash; all locally in your browser. <b>No data ever leaves your device.</b>
   </div>
 </div>
-<footer>Video Reverser &copy; 2026 &mdash; FFmpeg WASM &mdash; Built with HTML/CSS/JS</footer>
+<footer>Video Reverser &copy; 2026 &mdash; Pure HTML/CSS/JS</footer>
 
-<!-- FFmpeg v0.11.6 works on GitHub Pages (no SharedArrayBuffer required) -->
-<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
 <script>
-const { createFFmpeg, fetchFile } = FFmpeg;
-
-const fileInput = document.getElementById('fileInput');
-const dropZone = document.getElementById('dropZone');
-const previewSection = document.getElementById('previewSection');
-const originalVideo = document.getElementById('originalVideo');
-const reverseBtn = document.getElementById('reverseBtn');
-const resetBtn = document.getElementById('resetBtn');
-const progressWrap = document.getElementById('progressWrap');
-const progressBar = document.getElementById('progressBar');
-const statusText = document.getElementById('statusText');
-const resultSection = document.getElementById('resultSection');
-const resultVideo = document.getElementById('resultVideo');
-const downloadBtn = document.getElementById('downloadBtn');
-const reverseAnotherBtn = document.getElementById('reverseAnotherBtn');
-const speedNote = document.getElementById('speedNote');
-
-let currentFile = null;
-let resultBlob = null;
-let ffmpeg = null;
-let ffmpegReady = false;
-
-// Drag and drop
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault(); dropZone.classList.remove('drag');
-  const f = e.dataTransfer.files[0];
-  if (f && f.type.startsWith('video/')) loadFile(f);
-});
-fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
-
-function loadFile(file) {
-  currentFile = file;
-  originalVideo.src = URL.createObjectURL(file);
-  previewSection.style.display = 'block';
-  resultSection.style.display = 'none';
-  progressWrap.style.display = 'none';
-  speedNote.style.display = 'none';
-  progressBar.style.width = '0%';
-}
-
-resetBtn.addEventListener('click', () => {
-  currentFile = null; originalVideo.src = '';
-  previewSection.style.display = 'none';
-  resultSection.style.display = 'none';
-  progressWrap.style.display = 'none';
-  speedNote.style.display = 'none';
-  fileInput.value = '';
-});
-
-reverseAnotherBtn.addEventListener('click', () => {
-  resultSection.style.display = 'none';
-  previewSection.style.display = 'none';
-  speedNote.style.display = 'none';
-  fileInput.value = ''; currentFile = null;
-});
-
-async function initFFmpeg() {
-  if (ffmpegReady) return;
-  setStatus('Loading FFmpeg engine... (first time ~5s)', 5);
-  ffmpeg = createFFmpeg({
-    log: false,
-    corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
-    progress: ({ ratio }) => {
-      if (ratio > 0) {
-        const pct = Math.round(40 + ratio * 55);
-        setStatus('Reversing... ' + Math.round(ratio * 100) + '%', pct);
-      }
-    }
-  });
-  await ffmpeg.load();
-  ffmpegReady = true;
-  setStatus('FFmpeg ready!', 35);
-}
-
-reverseBtn.addEventListener('click', async () => {
-  if (!currentFile) return;
-  reverseBtn.disabled = true;
-  progressWrap.style.display = 'block';
-  resultSection.style.display = 'none';
-  speedNote.style.display = 'none';
-  const startTime = Date.now();
-  try {
-    await initFFmpeg();
-    setStatus('Loading video into memory...', 38);
-    const ext = (currentFile.name.split('.').pop() || 'mp4').toLowerCase();
-    const inName = 'input.' + ext;
-    const outName = 'reversed.mp4';
-    ffmpeg.FS('writeFile', inName, await fetchFile(currentFile));
-    setStatus('Reversing video (FFmpeg turbo)...', 42);
-    await ffmpeg.run(
-      '-i', inName,
-      '-vf', 'reverse',
-      '-af', 'areverse',
-      '-preset', 'ultrafast',
-      '-crf', '23',
-      outName
-    );
-    setStatus('Finalizing...', 97);
-    const data = ffmpeg.FS('readFile', outName);
-    resultBlob = new Blob([data.buffer], { type: 'video/mp4' });
-    resultVideo.src = URL.createObjectURL(resultBlob);
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    progressWrap.style.display = 'none';
-    resultSection.style.display = 'block';
-    speedNote.style.display = 'block';
-    speedNote.textContent = 'Done in ' + elapsed + 's using FFmpeg WebAssembly turbo mode.';
-    // Cleanup FS
-    try { ffmpeg.FS('unlink', inName); } catch(e) {}
-    try { ffmpeg.FS('unlink', outName); } catch(e) {}
-  } catch (err) {
-    console.error(err);
-    setStatus('Error: ' + err.message, 0);
-    progressWrap.style.display = 'block';
-  }
-  reverseBtn.disabled = false;
-});
-
-downloadBtn.addEventListener('click', () => {
-  if (!resultBlob) return;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(resultBlob);
-  a.download = 'reversed_' + (currentFile ? currentFile.name.replace(/\.[^.]+$/, '') : 'video') + '.mp4';
-  a.click();
-});
-
-function setStatus(msg, pct) {
-  statusText.textContent = msg;
-  progressBar.style.width = pct + '%';
-}
+const fileInput=document.getElementById('fileInput'),dropZone=document.getElementById('dropZone'),previewSection=document.getElementById('previewSection'),originalVideo=document.getElementById('originalVideo'),reverseBtn=document.getElementById('reverseBtn'),resetBtn=document.getElementById('resetBtn'),progressWrap=document.getElementById('progressWrap'),progressBar=document.getElementById('progressBar'),statusText=document.getElementById('statusText'),resultSection=document.getElementById('resultSection'),resultVideo=document.getElementById('resultVideo'),downloadBtn=document.getElementById('downloadBtn'),reverseAnotherBtn=document.getElementById('reverseAnotherBtn'),speedNote=document.getElementById('speedNote');let currentFile=null,resultBlob=null;dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('drag')});dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('drag'));dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('drag');const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('video/'))loadFile(f)});fileInput.addEventListener('change',()=>{if(fileInput.files[0])loadFile(fileInput.files[0])});function loadFile(e){currentFile=e;originalVideo.src=URL.createObjectURL(e);previewSection.style.display='block';resultSection.style.display='none';progressWrap.style.display='none';speedNote.style.display='none';progressBar.style.width='0%'}resetBtn.addEventListener('click',()=>{currentFile=null;originalVideo.src='';previewSection.style.display='none';resultSection.style.display='none';progressWrap.style.display='none';speedNote.style.display='none';fileInput.value=''});reverseAnotherBtn.addEventListener('click',()=>{resultSection.style.display='none';previewSection.style.display='none';speedNote.style.display='none';fileInput.value='';currentFile=null});reverseBtn.addEventListener('click',async()=>{if(!currentFile)return;reverseBtn.disabled=!0;progressWrap.style.display='block';resultSection.style.display='none';speedNote.style.display='none';const e=Date.now();try{setStatus('Loading video...',5);const t=document.createElement('video');t.src=URL.createObjectURL(currentFile);t.muted=!0;await new Promise(e=>{t.onloadedmetadata=e});const a=t.duration,s=Math.min(30,Math.max(20,Math.round(a>0&&t.videoWidth>0?1/(a/(t.videoWidth/t.videoHeight*10)):25))),r=Math.floor(a*s);setStatus(`Capturing ${r} frames...`,10);const n=document.createElement('canvas'),i=n.getContext('2d');n.width=t.videoWidth||640;n.height=t.videoHeight||360;const o=[];for(let e=0;e<r;e++){const a=e/s;t.currentTime=a;await new Promise(e=>{t.onseeked=e});i.drawImage(t,0,0,n.width,n.height);o.push(n.toDataURL('image/jpeg',.85));const d=10+Math.round(e/r*60);setStatus(`Captured ${e+1}/${r} frames`,d)}setStatus('Reversing frames...',72);o.reverse();setStatus('Encoding reversed video...',75);const d=document.createElement('canvas'),l=d.getContext('2d');d.width=n.width;d.height=n.height;const c=d.captureStream(s),g=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':MediaRecorder.isTypeSupported('video/webm;codecs=vp8')?'video/webm;codecs=vp8':'video/webm',u=new MediaRecorder(c,{mimeType:g,videoBitsPerSecond:5e6}),p=[];u.ondataavailable=e=>{e.data.size>0&&p.push(e.data)};u.start();for(let e=0;e<o.length;e++){const t=new Image;await new Promise(a=>{t.onload=a;t.src=o[e]});l.drawImage(t,0,0,d.width,d.height);await new Promise(e=>setTimeout(e,1e3/s));const a=75+Math.round(e/o.length*20);setStatus(`Encoding ${e+1}/${o.length}`,a)}u.stop();await new Promise(e=>{u.onstop=e});resultBlob=new Blob(p,{type:g});resultVideo.src=URL.createObjectURL(resultBlob);const m=((Date.now()-e)/1e3).toFixed(1);progressWrap.style.display='none';resultSection.style.display='block';speedNote.style.display='block';speedNote.textContent=`Completed in ${m}s`}catch(e){console.error(e);setStatus('Error: '+e.message,0);progressWrap.style.display='block'}reverseBtn.disabled=!1});downloadBtn.addEventListener('click',()=>{if(!resultBlob)return;const e=document.createElement('a');e.href=URL.createObjectURL(resultBlob);e.download='reversed_'+(currentFile?currentFile.name.replace(/\.[^.]+$/,''):'video')+'.webm';e.click()});function setStatus(e,t){statusText.textContent=e;progressBar.style.width=t+'%'}
 </script>
 </body>
 </html>

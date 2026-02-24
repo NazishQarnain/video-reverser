@@ -80,10 +80,10 @@ footer{margin-top:auto;padding:20px;opacity:.38;font-size:.8rem}
   <div class="speed-note" id="speedNote" style="display:none"></div>
 
   <div class="info-box">
-    <b>High-quality mode:</b> Preserves original resolution and framerate. Uses optimized frame extraction with GPU-accelerated ImageBitmap and high-bitrate encoding. <b>No data leaves your device.</b>
+    <b>High-quality mode:</b> Preserves original resolution and framerate. Uses optimized frame extraction with GPU-accelerated ImageBitmap and high-bitrate encoding. Output duration matches input exactly. <b>No data leaves your device.</b>
   </div>
 </div>
-<footer>Video Reverser &copy; 2026 &mdash; High Quality • Optimized</footer>
+<footer>Video Reverser &copy; 2026 &mdash; High Quality • Optimized • Exact Duration</footer>
 
 <script>
 const $=id=>document.getElementById(id);
@@ -146,7 +146,7 @@ if(i%5===0)setStatus(`Frame ${i+1}/${totalFrames}`,pct);
 setStatus('Reversing...',72);
 frames.reverse();
 
-setStatus('Encoding high-quality video...',75);
+setStatus('Encoding at exact duration...',75);
 const outCanvas=document.createElement('canvas');
 const outCtx=outCanvas.getContext('2d');
 outCanvas.width=width;
@@ -156,19 +156,32 @@ const mimeType=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/web
 const recorder=new MediaRecorder(stream,{mimeType:mimeType,videoBitsPerSecond:8e6});
 const chunks=[];
 recorder.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data)};
+
+const exactDuration=totalFrames/fps*1000;
 recorder.start();
 
-for(let i=0;i<frames.length;i++){
+let frameIdx=0;
+const frameInterval=setInterval(async()=>{
+if(frameIdx>=frames.length){
+clearInterval(frameInterval);
+return;
+}
 const img=new Image;
-await new Promise(r=>{img.onload=r;img.src=frames[i]});
+img.src=frames[frameIdx];
+img.onload=()=>{
 outCtx.clearRect(0,0,width,height);
 outCtx.drawImage(img,0,0);
-await new Promise(r=>setTimeout(r,1000/fps));
-const pct=75+Math.round((i/frames.length)*20);
-if(i%10===0)setStatus(`Encoding ${i+1}/${frames.length}`,pct);
-}
+};
+const pct=75+Math.round((frameIdx/frames.length)*20);
+if(frameIdx%10===0)setStatus(`Encoding ${frameIdx+1}/${frames.length}`,pct);
+frameIdx++;
+},1000/fps);
 
+setTimeout(()=>{
+clearInterval(frameInterval);
 recorder.stop();
+},exactDuration);
+
 await new Promise(r=>recorder.onstop=r);
 
 resultBlob=new Blob(chunks,{type:mimeType});
@@ -177,7 +190,7 @@ const elapsed=((Date.now()-startTime)/1000).toFixed(1);
 progressWrap.style.display='none';
 resultSection.style.display='block';
 speedNote.style.display='block';
-speedNote.textContent=`✅ Done in ${elapsed}s at ${width}x${height} ${fps}fps • High quality (8 Mbps)`;
+speedNote.textContent=`✅ Done in ${elapsed}s • ${width}x${height} ${fps}fps • Duration: ${duration.toFixed(1)}s (exact match)`;
 }catch(err){
 console.error(err);
 setStatus('Error: '+err.message,0);

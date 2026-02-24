@@ -79,14 +79,15 @@ footer{margin-top:auto;padding:20px;opacity:.38;font-size:.8rem}
   <div class="speed-note" id="speedNote" style="display:none"></div>
 
   <div class="info-box">
-    <b>Why so fast?</b> This tool uses <b>FFmpeg compiled to WebAssembly</b> running entirely in your browser. FFmpeg uses native C-speed video processing &mdash; reversing a 30s video takes ~2-5 seconds instead of minutes. <b>No data ever leaves your device.</b>
+    <b>Why so fast?</b> Uses <b>FFmpeg compiled to WebAssembly</b> &mdash; native C-speed video processing in your browser. A 30s video reverses in ~3-8 seconds. <b>No data ever leaves your device.</b>
   </div>
 </div>
 <footer>Video Reverser &copy; 2026 &mdash; FFmpeg WASM &mdash; Built with HTML/CSS/JS</footer>
 
-<script type="module">
-import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
-import { fetchFile, toBlobURL } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
+<!-- FFmpeg v0.11.6 works on GitHub Pages (no SharedArrayBuffer required) -->
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+<script>
+const { createFFmpeg, fetchFile } = FFmpeg;
 
 const fileInput = document.getElementById('fileInput');
 const dropZone = document.getElementById('dropZone');
@@ -146,18 +147,18 @@ reverseAnotherBtn.addEventListener('click', () => {
 
 async function initFFmpeg() {
   if (ffmpegReady) return;
-  setStatus('Loading FFmpeg engine...', 5);
-  ffmpeg = new FFmpeg();
-  ffmpeg.on('progress', ({ progress }) => {
-    const pct = Math.round(40 + progress * 55);
-    setStatus(`Reversing... ${Math.round(progress * 100)}%`, pct);
+  setStatus('Loading FFmpeg engine... (first time ~5s)', 5);
+  ffmpeg = createFFmpeg({
+    log: false,
+    corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
+    progress: ({ ratio }) => {
+      if (ratio > 0) {
+        const pct = Math.round(40 + ratio * 55);
+        setStatus('Reversing... ' + Math.round(ratio * 100) + '%', pct);
+      }
+    }
   });
-  ffmpeg.on('log', ({ message }) => console.log('[ffmpeg]', message));
-  const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
-  await ffmpeg.load({
-    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-  });
+  await ffmpeg.load();
   ffmpegReady = true;
   setStatus('FFmpeg ready!', 35);
 }
@@ -171,36 +172,36 @@ reverseBtn.addEventListener('click', async () => {
   const startTime = Date.now();
   try {
     await initFFmpeg();
-    setStatus('Writing input file...', 38);
-    const ext = currentFile.name.split('.').pop().toLowerCase() || 'mp4';
-    const inName = `input.${ext}`;
+    setStatus('Loading video into memory...', 38);
+    const ext = (currentFile.name.split('.').pop() || 'mp4').toLowerCase();
+    const inName = 'input.' + ext;
     const outName = 'reversed.mp4';
-    await ffmpeg.writeFile(inName, await fetchFile(currentFile));
+    ffmpeg.FS('writeFile', inName, await fetchFile(currentFile));
     setStatus('Reversing video (FFmpeg turbo)...', 42);
-    // Fast reverse: reverse video+audio streams using FFmpeg filters
-    await ffmpeg.exec([
+    await ffmpeg.run(
       '-i', inName,
       '-vf', 'reverse',
       '-af', 'areverse',
       '-preset', 'ultrafast',
       '-crf', '23',
       outName
-    ]);
+    );
     setStatus('Finalizing...', 97);
-    const data = await ffmpeg.readFile(outName);
+    const data = ffmpeg.FS('readFile', outName);
     resultBlob = new Blob([data.buffer], { type: 'video/mp4' });
     resultVideo.src = URL.createObjectURL(resultBlob);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     progressWrap.style.display = 'none';
     resultSection.style.display = 'block';
     speedNote.style.display = 'block';
-    speedNote.textContent = `Done in ${elapsed}s using FFmpeg WebAssembly turbo mode.`;
-    // Cleanup
-    await ffmpeg.deleteFile(inName);
-    await ffmpeg.deleteFile(outName);
+    speedNote.textContent = 'Done in ' + elapsed + 's using FFmpeg WebAssembly turbo mode.';
+    // Cleanup FS
+    try { ffmpeg.FS('unlink', inName); } catch(e) {}
+    try { ffmpeg.FS('unlink', outName); } catch(e) {}
   } catch (err) {
     console.error(err);
     setStatus('Error: ' + err.message, 0);
+    progressWrap.style.display = 'block';
   }
   reverseBtn.disabled = false;
 });
@@ -209,7 +210,7 @@ downloadBtn.addEventListener('click', () => {
   if (!resultBlob) return;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(resultBlob);
-  a.download = 'reversed_' + (currentFile?.name || 'video.mp4');
+  a.download = 'reversed_' + (currentFile ? currentFile.name.replace(/\.[^.]+$/, '') : 'video') + '.mp4';
   a.click();
 });
 

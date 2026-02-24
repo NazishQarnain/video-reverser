@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Reverser - Fast & Free</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',sans-serif;background:#0f0f1a;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center}
+    header{width:100%;background:linear-gradient(135deg,#6c3de8,#3d8ef0);padding:20px;text-align:center}
+    header h1{font-size:2rem;letter-spacing:1px}header p{opacity:.85;margin-top:5px}
+    .container{width:100%;max-width:800px;padding:30px 20px}
+    .upload-box{border:2.5px dashed #6c3de8;border-radius:16px;padding:50px 30px;text-align:center;cursor:pointer;transition:.3s;background:rgba(108,61,232,.07)}
+    .upload-box:hover{background:rgba(108,61,232,.18);border-color:#3d8ef0}
+    .upload-box input{display:none}
+    .upload-box svg{width:56px;height:56px;stroke:#6c3de8;margin-bottom:12px}
+    .upload-box h2{font-size:1.3rem;margin-bottom:8px}.upload-box p{opacity:.65;font-size:.95rem}
+    .btn{display:inline-block;padding:13px 32px;border-radius:10px;border:none;cursor:pointer;font-size:1rem;font-weight:600;transition:.25s}
+    .btn-primary{background:linear-gradient(135deg,#6c3de8,#3d8ef0);color:#fff}
+    .btn-primary:hover{opacity:.88;transform:translateY(-1px)}
+    .btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none}
+    .btn-secondary{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2)}
+    .btn-secondary:hover{background:rgba(255,255,255,.2)}
+    .section{margin-top:28px}
+    .video-preview{width:100%;border-radius:14px;background:#000;max-height:360px;display:block}
+    .progress-wrap{margin-top:18px;display:none}
+    .progress-bar-bg{width:100%;height:10px;background:rgba(255,255,255,.12);border-radius:99px;overflow:hidden}
+    .progress-bar{height:100%;width:0%;background:linear-gradient(90deg,#6c3de8,#3d8ef0);border-radius:99px;transition:width .2s}
+    .status{margin-top:10px;font-size:.9rem;opacity:.75;text-align:center}
+    .result-section{display:none;margin-top:28px;text-align:center}
+    .result-section video{width:100%;border-radius:14px;background:#000;max-height:360px;margin-bottom:18px}
+    .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+    .info-box{background:rgba(255,255,255,.05);border-radius:12px;padding:18px 22px;margin-top:18px;font-size:.92rem;opacity:.8;line-height:1.7}
+    .info-box b{color:#8fa8ff}
+    footer{margin-top:auto;padding:20px;opacity:.4;font-size:.82rem}
+    @media(max-width:500px){header h1{font-size:1.5rem}.upload-box{padding:30px 16px}}
+  </style>
+</head>
+<body>
+<header>
+  <h1>&#9654; Video Reverser</h1>
+  <p>Reverse any video instantly in your browser &mdash; 100% private, no uploads</p>
+</header>
+<div class="container">
+  <div class="upload-box" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M15 10l-4 4-4-4"/><path d="M12 14V3"/>
+      <path d="M20 21H4a2 2 0 01-2-2V7a2 2 0 012-2h4l2-3h4l2 3h4a2 2 0 012 2v12a2 2 0 01-2 2z" stroke-dasharray="none"/>
+      <rect x="2" y="6" width="20" height="15" rx="2" style="fill:none"/>
+    </svg>
+    <h2>Drop video here or click to select</h2>
+    <p>Supports MP4, WebM, MOV, AVI, MKV &bull; Works entirely in your browser</p>
+    <input type="file" id="fileInput" accept="video/*">
+  </div>
+
+  <div class="section" id="previewSection" style="display:none">
+    <p style="margin-bottom:10px;opacity:.7">Original Video Preview:</p>
+    <video class="video-preview" id="originalVideo" controls></video>
+    <div class="actions" style="margin-top:16px">
+      <button class="btn btn-primary" id="reverseBtn">&#9658; Reverse Video</button>
+      <button class="btn btn-secondary" id="resetBtn">Choose Another</button>
+    </div>
+  </div>
+
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="status" id="statusText">Preparing...</div>
+  </div>
+
+  <div class="result-section" id="resultSection">
+    <p style="margin-bottom:10px;opacity:.7">Reversed Video:</p>
+    <video class="video-preview" id="resultVideo" controls></video>
+    <div class="actions">
+      <button class="btn btn-primary" id="downloadBtn">&#11015; Download Reversed Video</button>
+      <button class="btn btn-secondary" id="reverseAnotherBtn">Reverse Another</button>
+    </div>
+  </div>
+
+  <div class="info-box">
+    <b>How it works:</b> Your video frames are extracted using the browser&rsquo;s Canvas API, reversed in memory, and re-encoded using the MediaRecorder API &mdash; all locally. <b>No data ever leaves your device.</b>
+  </div>
+</div>
+<footer>Video Reverser &copy; 2026 &mdash; Built with pure HTML/CSS/JS</footer>
+
+<script>
+const fileInput=document.getElementById('fileInput');
+const dropZone=document.getElementById('dropZone');
+const previewSection=document.getElementById('previewSection');
+const originalVideo=document.getElementById('originalVideo');
+const reverseBtn=document.getElementById('reverseBtn');
+const resetBtn=document.getElementById('resetBtn');
+const progressWrap=document.getElementById('progressWrap');
+const progressBar=document.getElementById('progressBar');
+const statusText=document.getElementById('statusText');
+const resultSection=document.getElementById('resultSection');
+const resultVideo=document.getElementById('resultVideo');
+const downloadBtn=document.getElementById('downloadBtn');
+const reverseAnotherBtn=document.getElementById('reverseAnotherBtn');
+let currentFile=null;
+let reversedBlob=null;
+
+dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.style.background='rgba(108,61,232,.25)';});
+dropZone.addEventListener('dragleave',()=>{dropZone.style.background='';});
+dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.style.background='';const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('video/'))loadFile(f);});
+fileInput.addEventListener('change',()=>{if(fileInput.files[0])loadFile(fileInput.files[0]);});
+
+function loadFile(file){
+  currentFile=file;
+  originalVideo.src=URL.createObjectURL(file);
+  previewSection.style.display='block';
+  resultSection.style.display='none';
+  progressWrap.style.display='none';
+  progressBar.style.width='0%';
+}
+
+resetBtn.addEventListener('click',()=>{
+  currentFile=null;originalVideo.src='';
+  previewSection.style.display='none';
+  resultSection.style.display='none';
+  progressWrap.style.display='none';
+  fileInput.value='';
+});
+
+reverseAnotherBtn.addEventListener('click',()=>{
+  resultSection.style.display='none';
+  previewSection.style.display='none';
+  progressWrap.style.display='none';
+  fileInput.value='';currentFile=null;
+});
+
+reverseBtn.addEventListener('click',async()=>{
+  if(!currentFile)return;
+  reverseBtn.disabled=true;
+  progressWrap.style.display='block';
+  resultSection.style.display='none';
+  setStatus('Loading video...',0);
+
+  const video=document.createElement('video');
+  video.src=URL.createObjectURL(currentFile);
+  video.muted=true;
+  await new Promise(r=>{video.onloadedmetadata=r;});
+
+  const duration=video.duration;
+  const fps=25;
+  const totalFrames=Math.floor(duration*fps);
+  const canvas=document.createElement('canvas');
+  const ctx=canvas.getContext('2d');
+  canvas.width=video.videoWidth||640;
+  canvas.height=video.videoHeight||360;
+
+  setStatus('Extracting frames...',5);
+  const frames=[];
+  for(let i=0;i<totalFrames;i++){
+    video.currentTime=i/fps;
+    await new Promise(r=>{video.onseeked=r;});
+    const img=document.createElement('canvas');
+    img.width=canvas.width;img.height=canvas.height;
+    img.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
+    frames.push(img);
+    const pct=5+Math.round((i/totalFrames)*55);
+    setStatus(`Extracting frames... ${i+1}/${totalFrames}`,pct);
+  }
+
+  setStatus('Reversing frames...',60);
+  frames.reverse();
+
+  setStatus('Encoding reversed video...',65);
+  const stream=canvas.captureStream(fps);
+  const options=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?{mimeType:'video/webm;codecs=vp9'}:
+    MediaRecorder.isTypeSupported('video/webm;codecs=vp8')?{mimeType:'video/webm;codecs=vp8'}:{mimeType:'video/webm'};
+  const recorder=new MediaRecorder(stream,options);
+  const chunks=[];
+  recorder.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
+
+  recorder.start();
+  for(let i=0;i<frames.length;i++){
+    ctx.drawImage(frames[i],0,0);
+    await new Promise(r=>setTimeout(r,1000/fps));
+    const pct=65+Math.round((i/frames.length)*30);
+    setStatus(`Encoding frame ${i+1}/${frames.length}`,pct);
+  }
+  recorder.stop();
+  await new Promise(r=>{recorder.onstop=r;});
+
+  reversedBlob=new Blob(chunks,{type:options.mimeType||'video/webm'});
+  const url=URL.createObjectURL(reversedBlob);
+  resultVideo.src=url;
+  progressWrap.style.display='none';
+  resultSection.style.display='block';
+  reverseBtn.disabled=false;
+  setStatus('Done!',100);
+});
+
+downloadBtn.addEventListener('click',()=>{
+  if(!reversedBlob)return;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(reversedBlob);
+  const ext=reversedBlob.type.includes('mp4')?'mp4':'webm';
+  a.download='reversed_video.'+ext;
+  a.click();
+});
+
+function setStatus(msg,pct){
+  statusText.textContent=msg;
+  progressBar.style.width=pct+'%';
+}
+</script>
+</body>
+</html>

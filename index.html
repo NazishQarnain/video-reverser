@@ -8,30 +8,58 @@
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <style>
+        @keyframes pulse-bar { 0%,100%{opacity:1} 50%{opacity:.6} }
+        .animate-pulse-bar { animation: pulse-bar 1.2s ease-in-out infinite; }
+        .progress-glow { box-shadow: 0 0 10px #6366f1, 0 0 20px #6366f1; }
+    </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
     <div class="max-w-md w-full bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700">
-        <h1 class="text-3xl font-bold mb-6 text-center bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+        <h1 class="text-3xl font-bold mb-2 text-center bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
             Fast Video Reverser
         </h1>
+        <p class="text-center text-gray-400 text-sm mb-6">100% in-browser &mdash; no server needed</p>
+
         <div id="dropzone" class="border-2 border-dashed border-gray-600 rounded-lg p-10 text-center hover:border-blue-500 transition-colors cursor-pointer mb-6">
-            <p class="text-gray-400">Drag & Drop or Click to Select Video</p>
+            <div class="text-4xl mb-2">&#127909;</div>
+            <p class="text-gray-400 text-sm">Drag & Drop or Click to Select Video</p>
             <input type="file" id="fileInput" class="hidden" accept="video/*">
         </div>
+
+        <!-- Progress Section -->
+        <div id="progressSection" class="hidden mb-5">
+            <div class="flex justify-between items-center mb-1">
+                <span id="progressLabel" class="text-sm text-gray-300 animate-pulse-bar">Processing...</span>
+                <span id="progressPercent" class="text-sm font-bold text-indigo-400">0%</span>
+            </div>
+            <div class="w-full bg-gray-700 rounded-full h-4 overflow-hidden">
+                <div id="progressBar" class="h-4 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300 progress-glow" style="width:0%"></div>
+            </div>
+            <p id="progressEta" class="text-xs text-gray-500 mt-1 text-right"></p>
+        </div>
+
         <div id="status" class="hidden mb-4 p-3 bg-gray-700 rounded text-sm text-center"></div>
+
         <div class="flex flex-col gap-3">
-            <button id="reverseBtn" disabled class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg transition-all transform active:scale-95">
-                Reverse Video Locally
+            <button id="reverseBtn" disabled class="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg transition-all transform active:scale-95">
+                &#9654; Reverse Video
+            </button>
+            <button id="downloadBtn" class="hidden bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all transform active:scale-95">
+                &#11015; Download Reversed Video
             </button>
             <button id="uploadBtn" class="hidden bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-all transform active:scale-95">
-                Upload to Firebase
+                &#9729; Upload to Firebase
             </button>
         </div>
+
         <video id="outputVideo" class="mt-6 w-full rounded-lg hidden" controls></video>
     </div>
+
     <script>
         const { createFFmpeg, fetchFile } = FFmpeg;
         const ffmpeg = createFFmpeg({ log: true });
+
         const firebaseConfig = {
             apiKey: "YOUR_API_KEY",
             authDomain: "YOUR_PROJECT.firebaseapp.com",
@@ -41,50 +69,151 @@
         };
         firebase.initializeApp(firebaseConfig);
         const storage = firebase.storage();
+
         const dropzone = document.getElementById('dropzone');
         const fileInput = document.getElementById('fileInput');
         const reverseBtn = document.getElementById('reverseBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
         const uploadBtn = document.getElementById('uploadBtn');
         const status = document.getElementById('status');
         const outputVideo = document.getElementById('outputVideo');
+        const progressSection = document.getElementById('progressSection');
+        const progressBar = document.getElementById('progressBar');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressLabel = document.getElementById('progressLabel');
+        const progressEta = document.getElementById('progressEta');
+
         let selectedFile = null;
         let processedBlob = null;
+        let startTime = null;
+
         dropzone.onclick = () => fileInput.click();
-        fileInput.onchange = (e) => {
-            selectedFile = e.target.files[0];
-            if (selectedFile) {
-                status.innerText = `Selected: ${selectedFile.name}`;
-                status.classList.remove('hidden');
-                reverseBtn.disabled = false;
-            }
+        dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add('border-blue-400'); };
+        dropzone.ondragleave = () => dropzone.classList.remove('border-blue-400');
+        dropzone.ondrop = (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('border-blue-400');
+            const f = e.dataTransfer.files[0];
+            if (f && f.type.startsWith('video/')) setFile(f);
         };
+        fileInput.onchange = (e) => setFile(e.target.files[0]);
+
+        function setFile(f) {
+            selectedFile = f;
+            showStatus(`Selected: ${f.name} (${(f.size/1024/1024).toFixed(1)} MB)`);
+            reverseBtn.disabled = false;
+            downloadBtn.classList.add('hidden');
+            uploadBtn.classList.add('hidden');
+            outputVideo.classList.add('hidden');
+            progressSection.classList.add('hidden');
+            setProgress(0);
+        }
+
+        function showStatus(msg, isHTML) {
+            status.classList.remove('hidden');
+            if (isHTML) status.innerHTML = msg;
+            else status.innerText = msg;
+        }
+
+        function setProgress(ratio) {
+            const pct = Math.min(100, Math.round(ratio * 100));
+            progressBar.style.width = pct + '%';
+            progressPercent.innerText = pct + '%';
+            if (startTime && ratio > 0.01) {
+                const elapsed = (Date.now() - startTime) / 1000;
+                const total = elapsed / ratio;
+                const remaining = Math.max(0, total - elapsed);
+                progressEta.innerText = remaining > 1 ? `~${remaining.toFixed(0)}s remaining` : 'Almost done...';
+            }
+        }
+
         reverseBtn.onclick = async () => {
             if (!selectedFile) return;
             reverseBtn.disabled = true;
-            status.innerText = "Processing... (Stays in browser!)";
-            if (!ffmpeg.isLoaded()) await ffmpeg.load();
+            downloadBtn.classList.add('hidden');
+            uploadBtn.classList.add('hidden');
+            outputVideo.classList.add('hidden');
+            progressSection.classList.remove('hidden');
+            progressLabel.innerText = 'Loading FFmpeg...';
+            setProgress(0);
+            showStatus('Initializing FFmpeg engine...');
+
+            if (!ffmpeg.isLoaded()) {
+                await ffmpeg.load();
+            }
+
+            ffmpeg.setProgress(({ ratio }) => {
+                if (ratio >= 0) {
+                    progressLabel.innerText = 'Reversing video...';
+                    setProgress(ratio);
+                }
+            });
+
+            startTime = Date.now();
+            progressLabel.innerText = 'Reading file...';
+            showStatus('Processing in browser...');
+
             const { name } = selectedFile;
             ffmpeg.FS('writeFile', name, await fetchFile(selectedFile));
-            await ffmpeg.run('-i', name, '-vf', 'reverse', '-af', 'areverse', '-preset', 'ultrafast', 'output.mp4');
+
+            progressLabel.innerText = 'Reversing frames...';
+            await ffmpeg.run(
+                '-i', name,
+                '-vf', 'reverse',
+                '-af', 'areverse',
+                '-preset', 'ultrafast',
+                'output.mp4'
+            );
+
+            setProgress(1);
+            progressLabel.innerText = 'Done!';
+            progressEta.innerText = `Completed in ${((Date.now()-startTime)/1000).toFixed(1)}s`;
+
             const data = ffmpeg.FS('readFile', 'output.mp4');
             processedBlob = new Blob([data.buffer], { type: 'video/mp4' });
-            outputVideo.src = URL.createObjectURL(processedBlob);
+            const url = URL.createObjectURL(processedBlob);
+            outputVideo.src = url;
             outputVideo.classList.remove('hidden');
-            status.innerText = "Done! Video reversed.";
+            downloadBtn.classList.remove('hidden');
             uploadBtn.classList.remove('hidden');
             reverseBtn.disabled = false;
+            showStatus(`Video reversed successfully!`);
         };
+
+        downloadBtn.onclick = () => {
+            if (!processedBlob) return;
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(processedBlob);
+            a.download = 'reversed_' + (selectedFile ? selectedFile.name : 'video.mp4');
+            a.click();
+        };
+
         uploadBtn.onclick = async () => {
             if (!processedBlob) return;
-            status.innerText = "Uploading to Firebase...";
+            uploadBtn.disabled = true;
+            progressSection.classList.remove('hidden');
+            progressLabel.innerText = 'Uploading to Firebase...';
+            setProgress(0);
             const storageRef = storage.ref().child(`reversed/${Date.now()}.mp4`);
-            try {
-                const snapshot = await storageRef.put(processedBlob);
-                const url = await snapshot.ref.getDownloadURL();
-                status.innerHTML = `Uploaded! <a href="${url}" target="_blank" class="text-blue-400 underline">View</a>`;
-            } catch (e) {
-                status.innerText = "Upload failed. Check Firebase config/rules.";
-            }
+            const task = storageRef.put(processedBlob);
+            task.on('state_changed',
+                (snap) => {
+                    const ratio = snap.bytesTransferred / snap.totalBytes;
+                    setProgress(ratio);
+                    progressLabel.innerText = `Uploading... ${(snap.bytesTransferred/1024/1024).toFixed(1)}MB / ${(snap.totalBytes/1024/1024).toFixed(1)}MB`;
+                },
+                (err) => {
+                    showStatus('Upload failed: ' + err.message);
+                    uploadBtn.disabled = false;
+                },
+                async () => {
+                    const url = await task.snapshot.ref.getDownloadURL();
+                    setProgress(1);
+                    progressLabel.innerText = 'Upload complete!';
+                    showStatus(`Uploaded! <a href="${url}" target="_blank" class="text-blue-400 underline font-bold">Open Firebase Link</a>`, true);
+                    uploadBtn.disabled = false;
+                }
+            );
         };
     </script>
 </body>

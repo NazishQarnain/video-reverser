@@ -58,7 +58,7 @@ footer{margin-top:auto;padding:20px;opacity:.38;font-size:.8rem}
     <p style="margin-bottom:10px;opacity:.65;font-size:.9rem">Original:</p>
     <video id="originalVideo" controls></video>
 
-    <!-- NEW: mode + segment time -->
+    <!-- mode + segment time -->
     <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; font-size:.9rem;">
       <label>
         <input type="radio" name="mode" id="modeFull" value="full" checked>
@@ -90,7 +90,8 @@ footer{margin-top:auto;padding:20px;opacity:.38;font-size:.8rem}
     <p style="margin-bottom:10px;opacity:.65;font-size:.9rem">Reversed Video:</p>
     <video id="resultVideo" controls></video>
     <div class="actions">
-      <button class="btn btn-primary" id="downloadBtn">&#11015; Download</button>
+      <button class="btn btn-primary" id="downloadWithAudioBtn">&#11015; Download with voice</button>
+      <button class="btn btn-secondary" id="downloadMuteBtn">&#11015; Download without voice</button>
       <button class="btn btn-secondary" id="reverseAnotherBtn">Reverse Another</button>
     </div>
   </div>
@@ -116,7 +117,8 @@ const fileInput=$('fileInput'),
       statusText=$('statusText'),
       resultSection=$('resultSection'),
       resultVideo=$('resultVideo'),
-      downloadBtn=$('downloadBtn'),
+      downloadWithAudioBtn=$('downloadWithAudioBtn'),
+      downloadMuteBtn=$('downloadMuteBtn'),
       reverseAnotherBtn=$('reverseAnotherBtn'),
       speedNote=$('speedNote'),
       modeFull=$('modeFull'),
@@ -207,7 +209,7 @@ for(let i=0;i<totalFrames;i++){
   if(i%5===0)setStatus(`Frame ${i+1}/${totalFrames}`,pct);
 }
 
-/* NEW: full vs segment logic */
+// full vs segment
 let finalFrames;
 if (modeFull.checked) {
   setStatus('Reversing full video...',72);
@@ -283,12 +285,17 @@ progressWrap.style.display='block';
 reverseBtn.disabled=false;
 });
 
-downloadBtn.addEventListener('click',()=>{
-if(!resultBlob)return;
-const a=document.createElement('a');
-a.href=URL.createObjectURL(resultBlob);
-a.download='reversed_'+(currentFile?currentFile.name.replace(/\.[^.]+$/,''):'video')+'.webm';
-a.click();
+// downloads
+downloadMuteBtn.addEventListener('click', () => {
+  if (!resultBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(resultBlob);
+  a.download = 'reversed_' + (currentFile ? currentFile.name.replace(/\.[^.]+$/, '') : 'video') + '_mute.webm';
+  a.click();
+});
+
+downloadWithAudioBtn.addEventListener('click', () => {
+  alert('With-voice download coming soon.\nAbhi sirf video without voice available hai.');
 });
 
 function setStatus(msg,pct){statusText.textContent=msg;progressBar.style.width=pct+'%'}

@@ -58,7 +58,7 @@ footer{margin-top:auto;padding:20px;opacity:.38;font-size:.8rem}
     <p style="margin-bottom:10px;opacity:.65;font-size:.9rem">Original:</p>
     <video id="originalVideo" controls></video>
 
-    <!-- mode + segment time -->
+    <!-- NEW: mode + segment time -->
     <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; font-size:.9rem;">
       <label>
         <input type="radio" name="mode" id="modeFull" value="full" checked>
@@ -90,8 +90,7 @@ footer{margin-top:auto;padding:20px;opacity:.38;font-size:.8rem}
     <p style="margin-bottom:10px;opacity:.65;font-size:.9rem">Reversed Video:</p>
     <video id="resultVideo" controls></video>
     <div class="actions">
-      <button class="btn btn-primary" id="downloadWithAudioBtn">&#11015; Download with voice</button>
-      <button class="btn btn-secondary" id="downloadMuteBtn">&#11015; Download without voice</button>
+      <button class="btn btn-primary" id="downloadBtn">&#11015; Download</button>
       <button class="btn btn-secondary" id="reverseAnotherBtn">Reverse Another</button>
     </div>
   </div>
@@ -117,8 +116,7 @@ const fileInput=$('fileInput'),
       statusText=$('statusText'),
       resultSection=$('resultSection'),
       resultVideo=$('resultVideo'),
-      downloadWithAudioBtn=$('downloadWithAudioBtn'),
-      downloadMuteBtn=$('downloadMuteBtn'),
+      downloadBtn=$('downloadBtn'),
       reverseAnotherBtn=$('reverseAnotherBtn'),
       speedNote=$('speedNote'),
       modeFull=$('modeFull'),
@@ -209,7 +207,7 @@ for(let i=0;i<totalFrames;i++){
   if(i%5===0)setStatus(`Frame ${i+1}/${totalFrames}`,pct);
 }
 
-// full vs segment
+/* NEW: full vs segment logic */
 let finalFrames;
 if (modeFull.checked) {
   setStatus('Reversing full video...',72);
@@ -285,106 +283,12 @@ progressWrap.style.display='block';
 reverseBtn.disabled=false;
 });
 
-// FAST: download without voice
-downloadMuteBtn.addEventListener('click', () => {
-  if (!resultBlob) return;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(resultBlob);
-  a.download = 'reversed_' + (currentFile ? currentFile.name.replace(/\.[^.]+$/, '') : 'video') + '_mute.webm';
-  a.click();
-});
-
-/* FFmpeg lazy-load helpers */
-let ffmpegLoaded = false;
-let ffmpegLoading = null;
-
-function loadFFmpeg() {
-  if (ffmpegLoaded) return Promise.resolve();
-  if (ffmpegLoading) return ffmpegLoading;
-
-  ffmpegLoading = new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.9/dist/ffmpeg.min.js';
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error('Failed to load FFmpeg'));
-    document.body.appendChild(s);
-  }).then(async () => {
-    const { createFFmpeg, fetchFile } = FFmpeg;
-    window._ffmpeg = createFFmpeg({ log: false });
-    await window._ffmpeg.load();
-    window._fetchFile = fetchFile;
-    ffmpegLoaded = true;
-  });
-
-  return ffmpegLoading;
-}
-
-// Download with normal voice (merge using ffmpeg.wasm)
-downloadWithAudioBtn.addEventListener('click', async () => {
-  if (!resultBlob || !currentFile) {
-    alert('Pehle video reverse karke result generate karo.');
-    return;
-  }
-
-  try {
-    reverseBtn.disabled = true;
-    downloadWithAudioBtn.disabled = true;
-    setStatus('Loading FFmpeg (first time thoda time lag sakta hai)...', 80);
-
-    await loadFFmpeg();
-    const ffmpeg = window._ffmpeg;
-    const fetchFile = window._fetchFile;
-
-    setStatus('Preparing files for merge...', 82);
-
-    // reversed (mute) video -> in_rev.webm
-    const revData = await resultBlob.arrayBuffer();
-    ffmpeg.FS('writeFile', 'in_rev.webm', new Uint8Array(revData));
-
-    // original video -> in_src.webm (audio ke liye)
-    const origData = await fetchFile(currentFile);
-    ffmpeg.FS('writeFile', 'in_src.webm', origData);
-
-    setStatus('Extracting original audio...', 86);
-    await ffmpeg.run(
-      '-i', 'in_src.webm',
-      '-vn',
-      '-acodec', 'copy',
-      'audio.aac'
-    );
-
-    setStatus('Merging normal audio with reversed video...', 92);
-    await ffmpeg.run(
-      '-i', 'in_rev.webm',
-      '-i', 'audio.aac',
-      '-c:v', 'copy',
-      '-c:a', 'aac',
-      '-shortest',
-      'out_merged.mp4'
-    );
-
-    const data = ffmpeg.FS('readFile', 'out_merged.mp4');
-    const mergedBlob = new Blob([data.buffer], { type: 'video/mp4' });
-
-    setStatus('Ready: merged video + normal audio', 100);
-
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(mergedBlob);
-    a.download = 'reversed_' + (currentFile.name.replace(/\.[^.]+$/, '')) + '_with_audio.mp4';
-    a.click();
-
-    ['in_rev.webm','in_src.webm','audio.aac','out_merged.mp4'].forEach(f => {
-      try { ffmpeg.FS('unlink', f); } catch(e){}
-    });
-
-  } catch (err) {
-    console.error(err);
-    alert('Audio merge me error aa gaya: ' + err.message);
-    setStatus('FFmpeg error: ' + err.message, 0);
-  } finally {
-    reverseBtn.disabled = false;
-    downloadWithAudioBtn.disabled = false;
-  }
+downloadBtn.addEventListener('click',()=>{
+if(!resultBlob)return;
+const a=document.createElement('a');
+a.href=URL.createObjectURL(resultBlob);
+a.download='reversed_'+(currentFile?currentFile.name.replace(/\.[^.]+$/,''):'video')+'.webm';
+a.click();
 });
 
 function setStatus(msg,pct){statusText.textContent=msg;progressBar.style.width=pct+'%'}

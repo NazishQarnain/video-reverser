@@ -57,6 +57,24 @@ footer{margin-top:auto;padding:20px;opacity:.38;font-size:.8rem}
   <div class="section" id="previewSection" style="display:none">
     <p style="margin-bottom:10px;opacity:.65;font-size:.9rem">Original:</p>
     <video id="originalVideo" controls></video>
+
+    <!-- NEW: mode + segment time -->
+    <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; font-size:.9rem;">
+      <label>
+        <input type="radio" name="mode" id="modeFull" value="full" checked>
+        Full video reverse
+      </label>
+      <label>
+        <input type="radio" name="mode" id="modeSegment" value="segment">
+        Segment reverse
+      </label>
+      <input type="number" id="segmentSeconds" min="1" value="20"
+        style="width:80px;padding:6px 8px;border-radius:6px;border:none;outline:none;
+               background:rgba(255,255,255,.06);color:#fff;"
+        placeholder="Sec">
+      <span style="opacity:.6;">seconds per segment</span>
+    </div>
+
     <div class="actions" style="margin-top:14px">
       <button class="btn btn-primary" id="reverseBtn">&#9889; Reverse Video (HQ)</button>
       <button class="btn btn-secondary" id="resetBtn">Choose Another</button>
@@ -87,17 +105,63 @@ footer{margin-top:auto;padding:20px;opacity:.38;font-size:.8rem}
 
 <script>
 const $=id=>document.getElementById(id);
-const fileInput=$('fileInput'),dropZone=$('dropZone'),previewSection=$('previewSection'),originalVideo=$('originalVideo'),reverseBtn=$('reverseBtn'),resetBtn=$('resetBtn'),progressWrap=$('progressWrap'),progressBar=$('progressBar'),statusText=$('statusText'),resultSection=$('resultSection'),resultVideo=$('resultVideo'),downloadBtn=$('downloadBtn'),reverseAnotherBtn=$('reverseAnotherBtn'),speedNote=$('speedNote');
+const fileInput=$('fileInput'),
+      dropZone=$('dropZone'),
+      previewSection=$('previewSection'),
+      originalVideo=$('originalVideo'),
+      reverseBtn=$('reverseBtn'),
+      resetBtn=$('resetBtn'),
+      progressWrap=$('progressWrap'),
+      progressBar=$('progressBar'),
+      statusText=$('statusText'),
+      resultSection=$('resultSection'),
+      resultVideo=$('resultVideo'),
+      downloadBtn=$('downloadBtn'),
+      reverseAnotherBtn=$('reverseAnotherBtn'),
+      speedNote=$('speedNote'),
+      modeFull=$('modeFull'),
+      modeSegment=$('modeSegment'),
+      segmentSeconds=$('segmentSeconds');
+
 let currentFile,resultBlob;
 
 dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('drag')});
 dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('drag'));
-dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('drag');const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('video/'))loadFile(f)});
-fileInput.addEventListener('change',()=>{if(fileInput.files[0])loadFile(fileInput.files[0])});
+dropZone.addEventListener('drop',e=>{
+  e.preventDefault();
+  dropZone.classList.remove('drag');
+  const f=e.dataTransfer.files[0];
+  if(f&&f.type.startsWith('video/'))loadFile(f)
+});
+fileInput.addEventListener('change',()=>{
+  if(fileInput.files[0])loadFile(fileInput.files[0])
+});
 
-function loadFile(f){currentFile=f;originalVideo.src=URL.createObjectURL(f);previewSection.style.display='block';resultSection.style.display='none';progressWrap.style.display='none';speedNote.style.display='none';progressBar.style.width='0%'}
-resetBtn.addEventListener('click',()=>{currentFile=null;originalVideo.src='';previewSection.style.display='none';resultSection.style.display='none';progressWrap.style.display='none';speedNote.style.display='none';fileInput.value=''});
-reverseAnotherBtn.addEventListener('click',()=>{resultSection.style.display='none';previewSection.style.display='none';speedNote.style.display='none';fileInput.value='';currentFile=null});
+function loadFile(f){
+  currentFile=f;
+  originalVideo.src=URL.createObjectURL(f);
+  previewSection.style.display='block';
+  resultSection.style.display='none';
+  progressWrap.style.display='none';
+  speedNote.style.display='none';
+  progressBar.style.width='0%'
+}
+resetBtn.addEventListener('click',()=>{
+  currentFile=null;
+  originalVideo.src='';
+  previewSection.style.display='none';
+  resultSection.style.display='none';
+  progressWrap.style.display='none';
+  speedNote.style.display='none';
+  fileInput.value=''
+});
+reverseAnotherBtn.addEventListener('click',()=>{
+  resultSection.style.display='none';
+  previewSection.style.display='none';
+  speedNote.style.display='none';
+  fileInput.value='';
+  currentFile=null
+});
 
 reverseBtn.addEventListener('click',async()=>{
 if(!currentFile)return;
@@ -128,23 +192,43 @@ canvas.height=height;
 
 const frames=[];
 for(let i=0;i<totalFrames;i++){
-vid.currentTime=i/fps;
-await new Promise(r=>vid.onseeked=r);
-ctx.drawImage(vid,0,0,width,height);
-const bmp=await createImageBitmap(canvas);
-const tmpCanvas=document.createElement('canvas');
-tmpCanvas.width=width;
-tmpCanvas.height=height;
-const tmpCtx=tmpCanvas.getContext('2d');
-tmpCtx.drawImage(bmp,0,0);
-frames.push(tmpCanvas.toDataURL('image/jpeg',.92));
-bmp.close();
-const pct=10+Math.round((i/totalFrames)*60);
-if(i%5===0)setStatus(`Frame ${i+1}/${totalFrames}`,pct);
+  vid.currentTime=i/fps;
+  await new Promise(r=>vid.onseeked=r);
+  ctx.drawImage(vid,0,0,width,height);
+  const bmp=await createImageBitmap(canvas);
+  const tmpCanvas=document.createElement('canvas');
+  tmpCanvas.width=width;
+  tmpCanvas.height=height;
+  const tmpCtx=tmpCanvas.getContext('2d');
+  tmpCtx.drawImage(bmp,0,0);
+  frames.push(tmpCanvas.toDataURL('image/jpeg',.92));
+  bmp.close();
+  const pct=10+Math.round((i/totalFrames)*60);
+  if(i%5===0)setStatus(`Frame ${i+1}/${totalFrames}`,pct);
 }
 
-setStatus('Reversing...',72);
-frames.reverse();
+/* NEW: full vs segment logic */
+let finalFrames;
+if (modeFull.checked) {
+  setStatus('Reversing full video...',72);
+  finalFrames = frames.slice().reverse();
+} else {
+  let segSec = parseFloat(segmentSeconds.value) || 20;
+  if (segSec <= 0) segSec = 20;
+  const framesPerChunk = Math.max(1, Math.round(fps * segSec));
+  setStatus(`Building ${segSec}s segments...`,72);
+  finalFrames = [];
+  let chunkIndex = 0;
+  for (let i=0;i<frames.length;i+=framesPerChunk){
+    const chunk = frames.slice(i,i+framesPerChunk);
+    if (chunkIndex % 2 === 0) {
+      finalFrames.push(...chunk);      // normal
+    } else {
+      finalFrames.push(...chunk.reverse()); // reversed
+    }
+    chunkIndex++;
+  }
+}
 
 setStatus('Encoding at exact duration...',75);
 const outCanvas=document.createElement('canvas');
@@ -161,25 +245,25 @@ const exactDuration=totalFrames/fps*1000;
 recorder.start();
 
 let frameIdx=0;
-const frameInterval=setInterval(async()=>{
-if(frameIdx>=frames.length){
-clearInterval(frameInterval);
-return;
-}
-const img=new Image;
-img.src=frames[frameIdx];
-img.onload=()=>{
-outCtx.clearRect(0,0,width,height);
-outCtx.drawImage(img,0,0);
-};
-const pct=75+Math.round((frameIdx/frames.length)*20);
-if(frameIdx%10===0)setStatus(`Encoding ${frameIdx+1}/${frames.length}`,pct);
-frameIdx++;
+const frameInterval=setInterval(()=>{
+  if(frameIdx>=finalFrames.length){
+    clearInterval(frameInterval);
+    return;
+  }
+  const img=new Image;
+  img.src=finalFrames[frameIdx];
+  img.onload=()=>{
+    outCtx.clearRect(0,0,width,height);
+    outCtx.drawImage(img,0,0);
+  };
+  const pct=75+Math.round((frameIdx/finalFrames.length)*20);
+  if(frameIdx%10===0)setStatus(`Encoding ${frameIdx+1}/${finalFrames.length}`,pct);
+  frameIdx++;
 },1000/fps);
 
 setTimeout(()=>{
-clearInterval(frameInterval);
-recorder.stop();
+  clearInterval(frameInterval);
+  recorder.stop();
 },exactDuration);
 
 await new Promise(r=>recorder.onstop=r);

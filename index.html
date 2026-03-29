@@ -222,6 +222,18 @@
       <span style="opacity:.6;">seconds per segment</span>
     </div>
 
+    <!-- segment pattern options -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:.86rem;opacity:.9;">
+      <label>
+        <input type="radio" name="segmentPattern" id="patternAlternate" value="alternate" checked>
+        Normal → Reverse (alternate)
+      </label>
+      <label>
+        <input type="radio" name="segmentPattern" id="patternAllReverse" value="allReverse">
+        Reverse every segment
+      </label>
+    </div>
+
     <div class="actions" style="margin-top:14px">
       <button class="btn btn-primary" id="reverseBtn">&#9889; Reverse Video (HQ)</button>
       <button class="btn btn-secondary" id="resetBtn">Choose another</button>
@@ -278,6 +290,8 @@
   const modeFull          = $('modeFull');
   const modeSegment       = $('modeSegment');
   const segmentSeconds    = $('segmentSeconds');
+  const patternAlternate  = $('patternAlternate');
+  const patternAllReverse = $('patternAllReverse');
 
   let currentFile = null;
   let resultBlob  = null;
@@ -377,7 +391,6 @@
       const width    = vid.videoWidth  || 640;
       const height   = vid.videoHeight || 360;
 
-      // simple fps heuristic, but bounded
       const fps = 30;
       const totalFrames = Math.floor(duration * fps) || fps;
 
@@ -418,11 +431,19 @@
 
         for (let i = 0; i < frames.length; i += framesPerChunk) {
           const chunk = frames.slice(i, i + framesPerChunk);
-          if (chunkIndex % 2 === 0) {
-            finalFrames.push(...chunk);          // normal
+
+          if (patternAllReverse.checked) {
+            // option 2: har segment reverse
+            finalFrames.push(...chunk.reverse());
           } else {
-            finalFrames.push(...chunk.reverse()); // reversed
+            // option 1: alternate - 0: normal, 1: reverse, 2: normal, 3: reverse...
+            if (chunkIndex % 2 === 0) {
+              finalFrames.push(...chunk);          // normal
+            } else {
+              finalFrames.push(...chunk.reverse()); // reversed
+            }
           }
+
           chunkIndex++;
         }
       }

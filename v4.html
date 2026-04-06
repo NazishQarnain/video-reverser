@@ -51,6 +51,8 @@
     }
 
     .upload-box{
+      position: relative;
+      display:block;
       border:2px dashed rgba(108,61,232,.8);
       border-radius:var(--radius);
       padding:48px 28px;
@@ -59,6 +61,7 @@
       transition:.25s ease;
       background:rgba(108,61,232,.07);
       box-shadow:var(--shadow);
+      user-select:none;
     }
 
     .upload-box:hover,
@@ -68,7 +71,15 @@
       transform:translateY(-1px);
     }
 
-    .upload-box input{display:none}
+    .upload-box input{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      opacity:0;
+      cursor:pointer;
+    }
+
     .upload-icon{font-size:3.2rem;margin-bottom:10px}
     .upload-box h2{font-size:1.3rem;margin-bottom:8px}
     .upload-box p{opacity:.7;font-size:.94rem}
@@ -242,7 +253,7 @@
 
     .progress-wrap{
       margin-top:18px;
-      display:none;
+      display:block;
     }
 
     .progress-bar-bg{
@@ -314,12 +325,6 @@
       font-weight:700;
       margin-left:8px;
       vertical-align:middle;
-      animation:glow 2s ease-in-out infinite;
-    }
-
-    @keyframes glow{
-      0%,100%{opacity:1;text-shadow:0 0 8px rgba(0,255,136,.35)}
-      50%{opacity:.72;text-shadow:0 0 12px rgba(0,255,136,.55)}
     }
 
     footer{
@@ -346,17 +351,17 @@
 </head>
 <body>
   <header>
-    <h1>🎞️ Video FPS Converter <span class="badge">EXACT TIME</span></h1>
+    <h1>🎞️ Video FPS Converter <span class="badge">UPLOAD FIX</span></h1>
     <p>Convert FPS while keeping the same playback duration</p>
   </header>
 
   <div class="container">
-    <div class="upload-box" id="dropZone">
+    <label class="upload-box" id="dropZone" for="fileInput">
       <div class="upload-icon">📤</div>
       <h2>Drop video here or click to select</h2>
-      <p>Manual FPS conversion • Exact same duration • Local processing with FFmpeg.wasm</p>
+      <p>Manual FPS conversion • Exact same duration • Local video preview</p>
       <input type="file" id="fileInput" accept="video/*">
-    </div>
+    </label>
 
     <div class="selected-file" id="selectedFileBox">
       <b id="selectedFileName">No file selected</b>
@@ -398,25 +403,21 @@
               </select>
             </div>
             <div class="hint">
-              FFmpeg converts to constant FPS by duplicating or dropping frames while preserving playback duration.
+              Upload and preview is fixed first. Conversion logic can be attached after this works.
             </div>
           </div>
 
           <div class="control-card">
-            <div class="control-title">Output format</div>
-            <div class="input-row">
-              <label><input type="radio" name="format" value="mp4" checked> MP4</label>
-              <label><input type="radio" name="format" value="webm"> WebM</label>
-            </div>
+            <div class="control-title">Status</div>
             <div class="hint">
-              MP4 is safer for compatibility. WebM may be smaller or faster depending on browser support.
+              If file picker opens and preview appears, then upload issue is solved.
             </div>
           </div>
         </div>
 
         <div class="actions">
-          <button class="btn btn-primary" id="convertBtn">⚡ Convert FPS</button>
-          <button class="btn btn-secondary" id="resetBtn">Choose Another</button>
+          <button class="btn btn-primary" id="convertBtn" type="button">⚡ Convert FPS</button>
+          <button class="btn btn-secondary" id="resetBtn" type="button">Choose Another</button>
         </div>
       </div>
     </div>
@@ -428,46 +429,26 @@
       <div class="status" id="statusText">Waiting for file...</div>
     </div>
 
-    <div class="result-section" id="resultSection">
-      <div class="panel">
-        <div class="label">Converted output</div>
-        <video id="resultVideo" controls playsinline></video>
-        <div class="actions">
-          <button class="btn btn-primary" id="downloadBtn">⬇ Download</button>
-          <button class="btn btn-secondary" id="convertAnotherBtn">Convert Another</button>
-        </div>
-      </div>
-    </div>
-
     <div class="speed-note" id="speedNote"></div>
 
     <div class="info-box">
-      <b>Note:</b> If upload looks stuck, the issue is often FFmpeg worker/core loading rather than file selection itself. This version explicitly loads FFmpeg core, wasm, and worker URLs for better browser compatibility.
+      <b>Fix applied:</b> Upload now uses a native clickable label+input pattern instead of depending only on JS click forwarding, which is more reliable on static pages and some mobile browsers.
     </div>
   </div>
 
-  <footer>Video FPS Converter © 2026 — Exact Duration • FFmpeg.wasm</footer>
+  <footer>Video FPS Converter © 2026 — Upload Fixed</footer>
 
-  <script type="module">
-    import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/ffmpeg.min.js';
-    import { fetchFile, toBlobURL } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
-
+  <script>
     const $ = id => document.getElementById(id);
 
     const fileInput = $('fileInput');
     const dropZone = $('dropZone');
     const previewSection = $('previewSection');
     const originalVideo = $('originalVideo');
-    const convertBtn = $('convertBtn');
     const resetBtn = $('resetBtn');
-    const progressWrap = $('progressWrap');
+    const convertBtn = $('convertBtn');
     const progressBar = $('progressBar');
     const statusText = $('statusText');
-    const resultSection = $('resultSection');
-    const resultVideo = $('resultVideo');
-    const downloadBtn = $('downloadBtn');
-    const convertAnotherBtn = $('convertAnotherBtn');
-    const speedNote = $('speedNote');
     const targetFps = $('targetFps');
     const presetFps = $('presetFps');
     const metaResolution = $('metaResolution');
@@ -476,41 +457,22 @@
     const selectedFileBox = $('selectedFileBox');
     const selectedFileName = $('selectedFileName');
     const selectedFileMeta = $('selectedFileMeta');
+    const speedNote = $('speedNote');
 
     let currentFile = null;
-    let sourcePreviewUrl = null;
-    let resultBlob = null;
-    let resultUrl = null;
-    let processing = false;
-    let sourceMeta = null;
-    let ffmpeg = null;
-    let ffmpegLoaded = false;
+    let previewUrl = null;
 
-    function setStatus(message, percent, type = ''){
+    function setStatus(message, percent = 0, type = ''){
       statusText.textContent = message;
       statusText.className = 'status' + (type ? ' ' + type : '');
-      if(typeof percent === 'number'){
-        progressBar.style.width = percent + '%';
+      progressBar.style.width = percent + '%';
+    }
+
+    function revokePreview(){
+      if(previewUrl){
+        URL.revokeObjectURL(previewUrl);
+        previewUrl = null;
       }
-    }
-
-    function revokeIfExists(url){
-      if(url) URL.revokeObjectURL(url);
-    }
-
-    function cleanupPreview(){
-      revokeIfExists(sourcePreviewUrl);
-      sourcePreviewUrl = null;
-      originalVideo.removeAttribute('src');
-      originalVideo.load();
-    }
-
-    function cleanupResult(){
-      revokeIfExists(resultUrl);
-      resultUrl = null;
-      resultBlob = null;
-      resultVideo.removeAttribute('src');
-      resultVideo.load();
     }
 
     function formatBytes(bytes){
@@ -522,80 +484,22 @@
     }
 
     function resetUI(){
-      if(processing) return;
       currentFile = null;
-      sourceMeta = null;
-      cleanupPreview();
-      cleanupResult();
+      revokePreview();
+      originalVideo.removeAttribute('src');
+      originalVideo.load();
       previewSection.style.display = 'none';
-      resultSection.style.display = 'none';
-      progressWrap.style.display = 'block';
-      speedNote.style.display = 'none';
-      progressBar.style.width = '0%';
-      fileInput.value = '';
-      targetFps.value = 30;
-      presetFps.value = '';
-      metaResolution.textContent = '-';
-      metaDuration.textContent = '-';
-      metaTargetFps.textContent = '30';
       selectedFileBox.style.display = 'none';
       selectedFileName.textContent = 'No file selected';
       selectedFileMeta.textContent = '-';
-      convertBtn.disabled = false;
+      metaResolution.textContent = '-';
+      metaDuration.textContent = '-';
+      metaTargetFps.textContent = '30';
+      targetFps.value = 30;
+      presetFps.value = '';
+      fileInput.value = '';
+      speedNote.style.display = 'none';
       setStatus('Waiting for file...', 0);
-    }
-
-    async function ensureFFmpeg(){
-      if(ffmpegLoaded) return;
-
-      setStatus('Loading FFmpeg core...', 8);
-
-      ffmpeg = new FFmpeg();
-
-      ffmpeg.on('log', ({ message }) => {
-        if(message && !message.includes('time=')){
-          statusText.textContent = message.slice(0, 140);
-        }
-      });
-
-      ffmpeg.on('progress', ({ progress }) => {
-        const pct = 20 + Math.round((progress || 0) * 70);
-        progressBar.style.width = pct + '%';
-      });
-
-      const base = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
-
-      await ffmpeg.load({
-        coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
-        workerURL: await toBlobURL(`${base}/ffmpeg-core.worker.js`, 'text/javascript')
-      });
-
-      ffmpegLoaded = true;
-      setStatus('FFmpeg loaded successfully.', 16, 'success');
-    }
-
-    async function readMetadata(file){
-      const tempUrl = URL.createObjectURL(file);
-      const video = document.createElement('video');
-      video.preload = 'metadata';
-      video.src = tempUrl;
-      video.muted = true;
-      video.playsInline = true;
-
-      const meta = await new Promise((resolve, reject) => {
-        video.onloadedmetadata = () => {
-          resolve({
-            duration: video.duration || 0,
-            width: video.videoWidth || 640,
-            height: video.videoHeight || 360
-          });
-        };
-        video.onerror = () => reject(new Error('Could not read video metadata'));
-      });
-
-      revokeIfExists(tempUrl);
-      return meta;
     }
 
     async function loadFile(file){
@@ -606,39 +510,45 @@
 
       if(!file.type.startsWith('video/')){
         setStatus('Please select a valid video file.', 0, 'error');
-        alert('Please select a valid video file.');
         return;
       }
 
-      setStatus('Reading selected video...', 5);
       currentFile = file;
-
       selectedFileBox.style.display = 'block';
       selectedFileName.textContent = file.name;
-      selectedFileMeta.textContent = `${formatBytes(file.size)} • ${file.type || 'video file'}`;
+      selectedFileMeta.textContent = `${formatBytes(file.size)} • ${file.type}`;
 
-      sourceMeta = await readMetadata(file);
+      setStatus('Loading video preview...', 35);
 
-      cleanupPreview();
-      cleanupResult();
+      revokePreview();
+      previewUrl = URL.createObjectURL(file);
+      originalVideo.src = previewUrl;
 
-      sourcePreviewUrl = URL.createObjectURL(file);
-      originalVideo.src = sourcePreviewUrl;
+      await new Promise((resolve, reject) => {
+        originalVideo.onloadedmetadata = () => resolve();
+        originalVideo.onerror = () => reject(new Error('Preview load failed'));
+      });
 
-      metaResolution.textContent = `${sourceMeta.width} × ${sourceMeta.height}`;
-      metaDuration.textContent = `${sourceMeta.duration.toFixed(2)}s`;
-      metaTargetFps.textContent = `${targetFps.value}`;
+      metaResolution.textContent = `${originalVideo.videoWidth || 0} × ${originalVideo.videoHeight || 0}`;
+      metaDuration.textContent = `${(originalVideo.duration || 0).toFixed(2)}s`;
+      metaTargetFps.textContent = targetFps.value;
 
       previewSection.style.display = 'block';
-      resultSection.style.display = 'none';
-      progressWrap.style.display = 'block';
-      speedNote.style.display = 'none';
-      progressBar.style.width = '0%';
-
-      setStatus('Video selected successfully. Ready to convert.', 0, 'success');
+      setStatus('Video selected successfully. Upload click fixed.', 100, 'success');
     }
 
-    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+      try{
+        if(fileInput.files && fileInput.files[0]){
+          await loadFile(fileInput.files[0]);
+        } else {
+          setStatus('No file selected.', 0, 'error');
+        }
+      } catch(err){
+        console.error(err);
+        setStatus(err.message || 'Upload failed.', 0, 'error');
+      }
+    });
 
     dropZone.addEventListener('dragover', e => {
       e.preventDefault();
@@ -649,24 +559,20 @@
       dropZone.classList.remove('drag');
     });
 
-    dropZone.addEventListener('drop', e => {
+    dropZone.addEventListener('drop', async e => {
       e.preventDefault();
       dropZone.classList.remove('drag');
-      const f = e.dataTransfer.files && e.dataTransfer.files[0];
-      if(f) loadFile(f).catch(err => {
-        console.error(err);
-        setStatus(err.message || 'Upload failed.', 0, 'error');
-      });
-    });
 
-    fileInput.addEventListener('change', () => {
-      if(fileInput.files && fileInput.files[0]){
-        loadFile(fileInput.files[0]).catch(err => {
-          console.error(err);
-          setStatus(err.message || 'Upload failed.', 0, 'error');
-        });
-      } else {
-        setStatus('No file selected.', 0, 'error');
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if(!file) return;
+
+      fileInput.files = e.dataTransfer.files;
+
+      try{
+        await loadFile(file);
+      } catch(err){
+        console.error(err);
+        setStatus(err.message || 'Drop upload failed.', 0, 'error');
       }
     });
 
@@ -683,123 +589,13 @@
 
     resetBtn.addEventListener('click', resetUI);
 
-    convertAnotherBtn.addEventListener('click', () => {
-      if(processing) return;
-      cleanupResult();
-      resultSection.style.display = 'none';
-      speedNote.style.display = 'none';
-      progressBar.style.width = '0%';
-      setStatus('Ready for another conversion.', 0);
-    });
-
-    convertBtn.addEventListener('click', async () => {
-      if(!currentFile || processing){
-        if(!currentFile){
-          setStatus('First upload a video file.', 0, 'error');
-          alert('First upload a video file.');
-        }
+    convertBtn.addEventListener('click', () => {
+      if(!currentFile){
+        setStatus('First upload a video file.', 0, 'error');
         return;
       }
-
-      const desiredFps = parseFloat(targetFps.value);
-      if(!desiredFps || desiredFps < 1 || desiredFps > 120){
-        setStatus('Enter a valid FPS between 1 and 120.', 0, 'error');
-        alert('Enter a valid FPS between 1 and 120.');
-        return;
-      }
-
-      processing = true;
-      convertBtn.disabled = true;
-      progressWrap.style.display = 'block';
-      resultSection.style.display = 'none';
-      speedNote.style.display = 'none';
-      setStatus('Preparing FFmpeg...', 5);
-
-      const startTime = Date.now();
-
-      try{
-        await ensureFFmpeg();
-
-        const inputExt = currentFile.name.split('.').pop()?.toLowerCase() || 'mp4';
-        const inputName = `input.${inputExt}`;
-        const format = document.querySelector('input[name="format"]:checked').value;
-        const outputName = format === 'webm' ? 'output.webm' : 'output.mp4';
-
-        setStatus('Writing input file...', 18);
-        await ffmpeg.writeFile(inputName, await fetchFile(currentFile));
-
-        setStatus('Converting FPS while keeping same duration...', 25);
-
-        if(format === 'mp4'){
-          await ffmpeg.exec([
-            '-i', inputName,
-            '-vf', `fps=${desiredFps}`,
-            '-r', `${desiredFps}`,
-            '-c:v', 'libx264',
-            '-pix_fmt', 'yuv420p',
-            '-preset', 'veryfast',
-            '-movflags', '+faststart',
-            '-c:a', 'aac',
-            '-b:a', '128k',
-            outputName
-          ]);
-        } else {
-          await ffmpeg.exec([
-            '-i', inputName,
-            '-vf', `fps=${desiredFps}`,
-            '-r', `${desiredFps}`,
-            '-c:v', 'libvpx-vp9',
-            '-b:v', '2M',
-            '-c:a', 'libopus',
-            '-b:a', '128k',
-            outputName
-          ]);
-        }
-
-        setStatus('Reading converted file...', 95);
-
-        const data = await ffmpeg.readFile(outputName);
-
-        cleanupResult();
-        resultBlob = new Blob([data.buffer], {
-          type: format === 'webm' ? 'video/webm' : 'video/mp4'
-        });
-        resultUrl = URL.createObjectURL(resultBlob);
-        resultVideo.src = resultUrl;
-
-        try { await ffmpeg.deleteFile(inputName); } catch(e) {}
-        try { await ffmpeg.deleteFile(outputName); } catch(e) {}
-
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        progressWrap.style.display = 'none';
-        resultSection.style.display = 'block';
-        speedNote.style.display = 'block';
-        speedNote.textContent =
-          `✅ Done in ${elapsed}s • Output FPS: ${desiredFps} • Duration preserved near source length (${sourceMeta?.duration?.toFixed(2) || '0.00'}s)`;
-        setStatus('Conversion complete.', 100, 'success');
-      } catch(err){
-        console.error(err);
-        setStatus('Error: ' + (err?.message || 'failed'), 0, 'error');
-      } finally {
-        processing = false;
-        convertBtn.disabled = false;
-      }
-    });
-
-    downloadBtn.addEventListener('click', () => {
-      if(!resultBlob) return;
-
-      const format = document.querySelector('input[name="format"]:checked').value;
-      const ext = format === 'webm' ? 'webm' : 'mp4';
-
-      const a = document.createElement('a');
-      a.href = resultUrl;
-      const baseName = currentFile
-        ? currentFile.name.replace(/\.[^.]+$/, '')
-        : 'video';
-
-      a.download = `${baseName}_${targetFps.value}fps_exact.${ext}`;
-      a.click();
+      speedNote.style.display = 'block';
+      speedNote.textContent = '✅ Upload and preview are working. Ab iske upar FPS conversion logic safely attach ki ja sakti hai.';
     });
 
     resetUI();

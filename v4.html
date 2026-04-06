@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Video FPS Converter - Exact Duration</title>
+  <link rel="icon" href="data:,">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -327,6 +328,13 @@
       vertical-align:middle;
     }
 
+    code{
+      background:rgba(255,255,255,.08);
+      padding:2px 6px;
+      border-radius:6px;
+      font-family:monospace;
+    }
+
     footer{
       margin-top:auto;
       padding:18px 20px 20px;
@@ -351,7 +359,7 @@
 </head>
 <body>
   <header>
-    <h1>🎞️ Video FPS Converter <span class="badge">LOCAL CORE</span></h1>
+    <h1>🎞️ Video FPS Converter <span class="badge">PATCHED</span></h1>
     <p>Convert FPS while keeping the same playback duration</p>
   </header>
 
@@ -447,17 +455,57 @@
     <div class="speed-note" id="speedNote"></div>
 
     <div class="info-box">
-      <b>Important:</b> Put FFmpeg core files inside <code>./ffmpeg/</code> in your repo so worker loading happens from the same origin and GitHub Pages does not block it.
+      <b>Required repo files:</b> put these in <code>/ffmpeg/</code> —
+      <code>ffmpeg-core.js</code>, <code>ffmpeg-core.wasm</code>, <code>ffmpeg-core.worker.js</code>, <code>814.ffmpeg.js</code>.
     </div>
   </div>
 
   <footer>Video FPS Converter © 2026 — Exact Duration • FFmpeg.wasm</footer>
 
-  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
 
   <script>
-    const { FFmpeg } = FFmpegWASM;
+    let FFmpegLib = null;
+
+    async function fetchText(url){
+      const res = await fetch(url);
+      if(!res.ok) throw new Error('Failed to fetch ' + url);
+      return await res.text();
+    }
+
+    async function loadPatchedFFmpeg(){
+      if(window.FFmpegWASM) return window.FFmpegWASM;
+
+      const originalUrl = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js';
+      let code = await fetchText(originalUrl);
+
+      code = code.replace(
+        /new Worker\\(new URL\\(e\\.p\\+e\\.u\\(814\\),e\\.b\\),\\{type:void 0\\}\\)/g,
+        'new Worker(r.worker814URL,{type:void 0})'
+      );
+
+      const blob = new Blob([code], { type: 'application/javascript' });
+      const blobUrl = URL.createObjectURL(blob);
+
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = blobUrl;
+        s.onload = () => {
+          URL.revokeObjectURL(blobUrl);
+          resolve();
+        };
+        s.onerror = () => {
+          URL.revokeObjectURL(blobUrl);
+          reject(new Error('Failed to load patched ffmpeg.js'));
+        };
+        document.head.appendChild(s);
+      });
+
+      return window.FFmpegWASM;
+    }
+  </script>
+
+  <script>
     const { fetchFile } = FFmpegUtil;
 
     const $ = id => document.getElementById(id);
@@ -546,7 +594,10 @@
     async function ensureFFmpeg(){
       if(ffmpegLoaded) return;
 
-      setStatus('Loading local FFmpeg core...', 10);
+      setStatus('Loading patched local FFmpeg...', 10);
+
+      FFmpegLib = await loadPatchedFFmpeg();
+      const { FFmpeg } = FFmpegLib;
 
       ffmpeg = new FFmpeg();
 
@@ -564,11 +615,12 @@
       await ffmpeg.load({
         coreURL: './ffmpeg/ffmpeg-core.js',
         wasmURL: './ffmpeg/ffmpeg-core.wasm',
-        workerURL: './ffmpeg/ffmpeg-core.worker.js'
+        workerURL: './ffmpeg/ffmpeg-core.worker.js',
+        worker814URL: './ffmpeg/814.ffmpeg.js'
       });
 
       ffmpegLoaded = true;
-      setStatus('Local FFmpeg loaded successfully.', 15, 'success');
+      setStatus('Patched local FFmpeg loaded successfully.', 15, 'success');
     }
 
     async function loadFile(file){

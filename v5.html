@@ -310,6 +310,7 @@
       color:#9fc0ff;
       display:none;
       line-height:1.6;
+      word-break:break-word;
     }
 
     .info-box{
@@ -368,15 +369,15 @@
 </head>
 <body>
   <header>
-    <h1>🎞️ Video FPS Converter <span class="badge">EXACT DURATION</span></h1>
-    <p>Upload a video, choose target FPS manually, and keep exact playback duration</p>
+    <h1>🎞️ Video FPS Converter <span class="badge">EXACT DURATION HACK</span></h1>
+    <p>Upload a video, choose target FPS manually, and keep duration as close as possible</p>
   </header>
 
   <div class="container">
     <div class="upload-box" id="dropZone">
       <div class="upload-icon">📤</div>
       <h2>Drop video here or click to select</h2>
-      <p>Manual FPS conversion • Exact same duration • No server upload</p>
+      <p>Manual FPS conversion • Browser-only • No server upload</p>
       <input type="file" id="fileInput" accept="video/*">
     </div>
 
@@ -420,7 +421,7 @@
               </select>
             </div>
             <div class="hint">
-              Keep original duration mode rebuilds frames using timestamp mapping, so output duration stays locked to the source timeline instead of simply replaying extracted frames at a new rate.
+              Keep original duration mode uses fixed output frame count and manual requestFrame scheduling to minimize drift in MediaRecorder-based export. [web:161][web:165]
             </div>
           </div>
 
@@ -431,7 +432,7 @@
               <label><input type="radio" name="durationMode" id="changeSpeed" value="speed"> Change playback speed</label>
             </div>
             <div class="hint">
-              Keep original duration = target frame timeline is generated from source duration. Change playback speed = extracted frames are replayed directly at selected FPS, so duration may change.
+              Keep original duration maps source timestamps onto a target frame timeline. Change playback speed replays extracted frames directly at target FPS. [web:69][web:161]
             </div>
           </div>
         </div>
@@ -464,11 +465,11 @@
     <div class="speed-note" id="speedNote"></div>
 
     <div class="info-box">
-      <b>Important:</b> This browser-only version still keeps extracted frames in memory, so long or high-resolution videos can be heavy. Exact-duration behavior is improved by timeline mapping, but native FFmpeg remains more robust for large files. [page:140][web:65]
+      <b>Important:</b> This is the strongest practical MediaRecorder workaround, not a true FFmpeg-grade exact-duration encoder. The browser recorder still has realtime limitations and may drift slightly. [web:64][web:69][web:160]
     </div>
   </div>
 
-  <footer>Video FPS Converter © 2026 — Exact Duration • Local Processing</footer>
+  <footer>Video FPS Converter © 2026 — MediaRecorder Exact-Duration Workaround</footer>
 
   <script>
     const $ = id => document.getElementById(id);
@@ -645,8 +646,8 @@
         const t = Math.min(i / sampleFps, Math.max(0, duration - 0.001));
         vid.currentTime = t;
 
-        await new Promise(res => {
-          vid.onseeked = () => res();
+        await new Promise((resolve) => {
+          vid.onseeked = () => resolve();
         });
 
         ctx.drawImage(vid, 0, 0, width, height);
@@ -667,9 +668,9 @@
       const output = new Array(totalOutFrames);
 
       for(let i = 0; i < totalOutFrames; i++){
-        const t = i / targetFps;
+        const t = Math.min(sourceDuration, i / targetFps);
         const srcIndex = Math.min(
-          Math.max(0, Math.floor(t * sampleFps)),
+          Math.max(0, Math.round(t * sampleFps)),
           frames.length - 1
         );
         output[i] = frames[srcIndex];
@@ -678,13 +679,19 @@
       return output;
     }
 
-    async function encodeFrames(frames, outputFps, width, height){
+    async function encodeFrames(frames, outputFps, width, height, exactDurationSeconds) {
       const outCanvas = document.createElement('canvas');
       outCanvas.width = width;
       outCanvas.height = height;
       const outCtx = outCanvas.getContext('2d');
 
-      const stream = outCanvas.captureStream(outputFps);
+      const stream = outCanvas.captureStream(0);
+      const track = stream.getVideoTracks()[0];
+
+      if (!track || typeof track.requestFrame !== 'function') {
+        throw new Error('requestFrame() is not supported in this browser');
+      }
+
       const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
         ? 'video/webm;codecs=vp9'
         : 'video/webm;codecs=vp8';
@@ -696,16 +703,28 @@
 
       const chunks = [];
       recorder.ondataavailable = e => {
-        if(e.data.size > 0) chunks.push(e.data);
+        if (e.data && e.data.size > 0) chunks.push(e.data);
       };
+
+      const frameDelay = 1000 / outputFps;
+      const targetFrameCount = Math.max(1, Math.round(exactDurationSeconds * outputFps));
+
+      let preparedFrames = frames.slice();
+
+      if (preparedFrames.length < targetFrameCount) {
+        const last = preparedFrames[preparedFrames.length - 1];
+        while (preparedFrames.length < targetFrameCount) preparedFrames.push(last);
+      } else if (preparedFrames.length > targetFrameCount) {
+        preparedFrames = preparedFrames.slice(0, targetFrameCount);
+      }
 
       recorder.start();
 
-      const frameDelay = 1000 / outputFps;
+      const start = performance.now();
 
-      for(let i = 0; i < frames.length; i++){
+      for (let i = 0; i < preparedFrames.length; i++) {
         const img = new Image();
-        img.src = frames[i];
+        img.src = preparedFrames[i];
 
         await new Promise((resolve, reject) => {
           img.onload = resolve;
@@ -715,12 +734,27 @@
         outCtx.clearRect(0, 0, width, height);
         outCtx.drawImage(img, 0, 0, width, height);
 
-        if(i % 6 === 0 || i === frames.length - 1){
-          const pct = 58 + Math.round((i / frames.length) * 40);
-          setStatus(`Encoding ${i + 1}/${frames.length}`, pct);
+        track.requestFrame();
+
+        if (i % 6 === 0 || i === preparedFrames.length - 1) {
+          const pct = 58 + Math.round((i / preparedFrames.length) * 40);
+          setStatus(`Encoding ${i + 1}/${preparedFrames.length}`, pct);
         }
 
-        await new Promise(r => setTimeout(r, frameDelay));
+        const targetTime = start + (i + 1) * frameDelay;
+        const wait = targetTime - performance.now();
+
+        if (wait > 0) {
+          await new Promise(r => setTimeout(r, wait));
+        } else {
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+
+      const expectedEnd = start + targetFrameCount * frameDelay;
+      const finalWait = expectedEnd - performance.now();
+      if (finalWait > 0) {
+        await new Promise(r => setTimeout(r, finalWait));
       }
 
       recorder.stop();
@@ -728,6 +762,8 @@
       await new Promise(resolve => {
         recorder.onstop = resolve;
       });
+
+      stream.getTracks().forEach(t => t.stop());
 
       return new Blob(chunks, { type: mimeType });
     }
@@ -800,7 +836,7 @@
       try{
         let sampleFps;
         if(keepDuration.checked){
-          sampleFps = Math.max(24, Math.min(60, Math.round(desiredFps * 2)));
+          sampleFps = Math.max(24, Math.min(90, Math.round(desiredFps * 2)));
         } else {
           sampleFps = desiredFps;
         }
@@ -820,8 +856,12 @@
           outputFps = desiredFps;
         }
 
+        const exactDurationSeconds = keepDuration.checked
+          ? duration
+          : (outputFrames.length / outputFps);
+
         setStatus('Encoding converted FPS video...', 58);
-        const blob = await encodeFrames(outputFrames, outputFps, width, height);
+        const blob = await encodeFrames(outputFrames, outputFps, width, height, exactDurationSeconds);
 
         cleanupResult();
         resultBlob = blob;
@@ -833,9 +873,11 @@
         resultSection.style.display = 'block';
         speedNote.style.display = 'block';
 
-        const outputDuration = (outputFrames.length / outputFps).toFixed(2);
+        const outputDuration = (outputFrames.length / outputFps).toFixed(3);
+        const drift = (parseFloat(outputDuration) - duration).toFixed(3);
+
         speedNote.textContent =
-          `✅ Done in ${elapsed}s • ${width}x${height} • Output FPS: ${desiredFps} • Source duration: ${duration.toFixed(2)}s • Output duration: ${outputDuration}s`;
+          `✅ Done in ${elapsed}s • ${width}x${height} • Output FPS: ${desiredFps} • Source duration: ${duration.toFixed(3)}s • Target output duration: ${outputDuration}s • Timeline drift estimate: ${drift}s`;
       } catch(err){
         console.error(err);
         setStatus('Error: ' + (err?.message || 'failed'), 0);
@@ -854,7 +896,7 @@
         ? currentFile.name.replace(/\.[^.]+$/, '')
         : 'video';
 
-      a.download = `${baseName}_${targetFps.value}fps_exact.webm`;
+      a.download = `${baseName}_${targetFps.value}fps_exact_hack.webm`;
       a.click();
     });
 

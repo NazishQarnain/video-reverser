@@ -292,6 +292,7 @@
       opacity:.86;
       text-align:center;
       min-height:22px;
+      line-height:1.5;
     }
 
     .result-section{
@@ -367,15 +368,15 @@
 </head>
 <body>
   <header>
-    <h1>🎞️ Video FPS Converter <span class="badge">MANUAL FPS</span></h1>
-    <p>Upload a video, choose target FPS manually, and export locally in your browser</p>
+    <h1>🎞️ Video FPS Converter <span class="badge">EXACT DURATION</span></h1>
+    <p>Upload a video, choose target FPS manually, and keep exact playback duration</p>
   </header>
 
   <div class="container">
     <div class="upload-box" id="dropZone">
       <div class="upload-icon">📤</div>
       <h2>Drop video here or click to select</h2>
-      <p>Manual FPS conversion • Local browser processing • No server upload</p>
+      <p>Manual FPS conversion • Exact same duration • No server upload</p>
       <input type="file" id="fileInput" accept="video/*">
     </div>
 
@@ -399,8 +400,8 @@
             <b id="metaDuration">-</b>
           </div>
           <div class="meta-box">
-            <span>Estimated source FPS</span>
-            <b id="metaInputFps">Unknown</b>
+            <span>Target FPS</span>
+            <b id="metaTargetFps">30</b>
           </div>
         </div>
 
@@ -419,7 +420,7 @@
               </select>
             </div>
             <div class="hint">
-              This page re-encodes the video using your selected FPS. Browser-based recording uses MediaRecorder and canvas workflows, so speed and quality depend on device and browser.
+              Keep original duration mode rebuilds frames using timestamp mapping, so output duration stays locked to the source timeline instead of simply replaying extracted frames at a new rate.
             </div>
           </div>
 
@@ -430,7 +431,7 @@
               <label><input type="radio" name="durationMode" id="changeSpeed" value="speed"> Change playback speed</label>
             </div>
             <div class="hint">
-              Keep original duration = same playback length with new frame cadence. Change playback speed = same extracted frame count played at selected FPS, so output duration changes.
+              Keep original duration = target frame timeline is generated from source duration. Change playback speed = extracted frames are replayed directly at selected FPS, so duration may change.
             </div>
           </div>
         </div>
@@ -446,7 +447,7 @@
       <div class="progress-bar-bg">
         <div class="progress-bar" id="progressBar"></div>
       </div>
-      <div class="status" id="statusText">Processing...</div>
+      <div class="status" id="statusText">Waiting for file...</div>
     </div>
 
     <div class="result-section" id="resultSection">
@@ -463,11 +464,11 @@
     <div class="speed-note" id="speedNote"></div>
 
     <div class="info-box">
-      <b>Important:</b> This browser version still stores extracted frames in memory, so long or high-resolution videos can be slow and memory-heavy. For bigger files, FFmpeg WASM or native FFmpeg is the stronger path.
+      <b>Important:</b> This browser-only version still keeps extracted frames in memory, so long or high-resolution videos can be heavy. Exact-duration behavior is improved by timeline mapping, but native FFmpeg remains more robust for large files. [page:140][web:65]
     </div>
   </div>
 
-  <footer>Video FPS Converter © 2026 — Manual FPS • Local Processing</footer>
+  <footer>Video FPS Converter © 2026 — Exact Duration • Local Processing</footer>
 
   <script>
     const $ = id => document.getElementById(id);
@@ -493,7 +494,7 @@
     const presetFps = $('presetFps');
     const metaResolution = $('metaResolution');
     const metaDuration = $('metaDuration');
-    const metaInputFps = $('metaInputFps');
+    const metaTargetFps = $('metaTargetFps');
     const keepDuration = $('keepDuration');
     const changeSpeed = $('changeSpeed');
 
@@ -555,10 +556,10 @@
       presetFps.value = '';
       metaResolution.textContent = '-';
       metaDuration.textContent = '-';
-      metaInputFps.textContent = 'Unknown';
+      metaTargetFps.textContent = '30';
       keepDuration.checked = true;
       convertBtn.disabled = false;
-      setStatus('Processing...', 0);
+      setStatus('Waiting for file...', 0);
     }
 
     async function readMetadata(file){
@@ -605,13 +606,14 @@
 
       metaResolution.textContent = `${sourceMeta.width} × ${sourceMeta.height}`;
       metaDuration.textContent = `${sourceMeta.duration.toFixed(2)}s`;
-      metaInputFps.textContent = 'Estimated by browser workflow';
+      metaTargetFps.textContent = targetFps.value;
 
       previewSection.style.display = 'block';
       resultSection.style.display = 'none';
       progressWrap.style.display = 'none';
       speedNote.style.display = 'none';
       progressBar.style.width = '0%';
+      setStatus('Ready to convert.', 0);
     }
 
     async function extractFrames(file, sampleFps){
@@ -630,7 +632,7 @@
       const duration = vid.duration || 0;
       const width = vid.videoWidth || 640;
       const height = vid.videoHeight || 360;
-      const totalFrames = Math.max(1, Math.floor(duration * sampleFps));
+      const totalFrames = Math.max(1, Math.round(duration * sampleFps));
 
       const canvas = document.createElement('canvas');
       canvas.width = width;
@@ -640,7 +642,7 @@
       const frames = [];
 
       for(let i = 0; i < totalFrames; i++){
-        const t = Math.min(i / sampleFps, Math.max(0, duration - 0.03));
+        const t = Math.min(i / sampleFps, Math.max(0, duration - 0.001));
         vid.currentTime = t;
 
         await new Promise(res => {
@@ -651,13 +653,29 @@
         frames.push(canvas.toDataURL('image/jpeg', 0.88));
 
         if(i % 4 === 0 || i === totalFrames - 1){
-          const pct = 10 + Math.round((i / totalFrames) * 45);
+          const pct = 10 + Math.round((i / totalFrames) * 42);
           setStatus(`Extracting frame ${i + 1}/${totalFrames}`, pct);
         }
       }
 
       revokeIfExists(tempUrl);
       return { frames, duration, width, height, sampleFps };
+    }
+
+    function buildExactDurationFrames(frames, sourceDuration, sampleFps, targetFps){
+      const totalOutFrames = Math.max(1, Math.round(sourceDuration * targetFps));
+      const output = new Array(totalOutFrames);
+
+      for(let i = 0; i < totalOutFrames; i++){
+        const t = i / targetFps;
+        const srcIndex = Math.min(
+          Math.max(0, Math.floor(t * sampleFps)),
+          frames.length - 1
+        );
+        output[i] = frames[srcIndex];
+      }
+
+      return output;
     }
 
     async function encodeFrames(frames, outputFps, width, height){
@@ -739,7 +757,14 @@
     });
 
     presetFps.addEventListener('change', () => {
-      if(presetFps.value) targetFps.value = presetFps.value;
+      if(presetFps.value) {
+        targetFps.value = presetFps.value;
+        metaTargetFps.textContent = presetFps.value;
+      }
+    });
+
+    targetFps.addEventListener('input', () => {
+      metaTargetFps.textContent = targetFps.value || '-';
     });
 
     resetBtn.addEventListener('click', resetUI);
@@ -751,6 +776,7 @@
       speedNote.style.display = 'none';
       progressWrap.style.display = 'none';
       progressBar.style.width = '0%';
+      setStatus('Ready to convert again.', 0);
     });
 
     convertBtn.addEventListener('click', async () => {
@@ -772,16 +798,27 @@
       const startTime = Date.now();
 
       try{
-        const extractionFps = keepDuration.checked
-          ? desiredFps
-          : Math.min(60, Math.max(12, sourceMeta?.duration ? Math.round(desiredFps / 2) : desiredFps));
+        let sampleFps;
+        if(keepDuration.checked){
+          sampleFps = Math.max(24, Math.min(60, Math.round(desiredFps * 2)));
+        } else {
+          sampleFps = desiredFps;
+        }
 
-        const { frames, duration, width, height } = await extractFrames(currentFile, extractionFps);
+        const { frames, duration, width, height } = await extractFrames(currentFile, sampleFps);
 
         setStatus('Preparing output...', 55);
 
-        const outputFrames = frames.slice();
-        const outputFps = desiredFps;
+        let outputFrames;
+        let outputFps;
+
+        if(keepDuration.checked){
+          outputFrames = buildExactDurationFrames(frames, duration, sampleFps, desiredFps);
+          outputFps = desiredFps;
+        } else {
+          outputFrames = frames.slice();
+          outputFps = desiredFps;
+        }
 
         setStatus('Encoding converted FPS video...', 58);
         const blob = await encodeFrames(outputFrames, outputFps, width, height);
@@ -817,9 +854,11 @@
         ? currentFile.name.replace(/\.[^.]+$/, '')
         : 'video';
 
-      a.download = `${baseName}_${targetFps.value}fps.webm`;
+      a.download = `${baseName}_${targetFps.value}fps_exact.webm`;
       a.click();
     });
+
+    resetUI();
   </script>
 </body>
 </html>

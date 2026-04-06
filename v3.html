@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Video FPS Converter</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root{
+      --bg:#0f0f1a;
+      --bg-soft:#17172a;
+      --card:rgba(255,255,255,.05);
+      --card-2:rgba(255,255,255,.08);
+      --line:rgba(255,255,255,.12);
+      --text:#fff;
+      --muted:rgba(255,255,255,.68);
+      --primary:#6c3de8;
+      --secondary:#3d8ef0;
+      --success:#00ff88;
+      --danger:#ff6b7a;
+      --radius:16px;
+      --radius-sm:10px;
+      --shadow:0 12px 30px rgba(0,0,0,.45);
+    }
+
+    body{
+      font-family:'Segoe UI',sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(108,61,232,.22), transparent 30%),
+        linear-gradient(180deg, #111325 0%, var(--bg) 55%);
+      color:var(--text);
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+    }
+
+    header{
+      width:100%;
+      background:linear-gradient(135deg,var(--primary),var(--secondary));
+      padding:20px;
+      text-align:center;
+      box-shadow:var(--shadow);
+    }
+
+    header h1{font-size:2rem;letter-spacing:1px}
+    header p{opacity:.9;margin-top:6px}
+
+    .container{
+      width:100%;
+      max-width:920px;
+      padding:28px 20px 36px;
+    }
+
+    .upload-box{
+      border:2px dashed rgba(108,61,232,.8);
+      border-radius:var(--radius);
+      padding:48px 28px;
+      text-align:center;
+      cursor:pointer;
+      transition:.25s ease;
+      background:rgba(108,61,232,.07);
+      box-shadow:var(--shadow);
+    }
+
+    .upload-box:hover,
+    .upload-box.drag{
+      background:rgba(108,61,232,.18);
+      border-color:var(--secondary);
+      transform:translateY(-1px);
+    }
+
+    .upload-box input{display:none}
+    .upload-icon{font-size:3.2rem;margin-bottom:10px}
+    .upload-box h2{font-size:1.3rem;margin-bottom:8px}
+    .upload-box p{opacity:.7;font-size:.94rem}
+
+    .section{margin-top:24px}
+    .panel{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      padding:16px;
+      backdrop-filter:blur(10px);
+    }
+
+    .label{
+      margin-bottom:10px;
+      opacity:.66;
+      font-size:.92rem;
+    }
+
+    video{
+      width:100%;
+      border-radius:14px;
+      background:#000;
+      max-height:420px;
+      display:block;
+    }
+
+    .controls-grid{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:14px;
+      margin-top:14px;
+    }
+
+    .control-card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:14px;
+    }
+
+    .control-title{
+      font-size:.92rem;
+      font-weight:700;
+      margin-bottom:10px;
+      color:#c8d7ff;
+    }
+
+    .input-row{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+
+    .input-row input,
+    .input-row select{
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.12);
+      outline:none;
+      background:rgba(255,255,255,.06);
+      color:#fff;
+      min-width:120px;
+    }
+
+    .hint{
+      font-size:.84rem;
+      color:var(--muted);
+      margin-top:8px;
+      line-height:1.5;
+    }
+
+    .meta-grid{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:12px;
+      margin-top:14px;
+    }
+
+    .meta-box{
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;
+      padding:12px;
+    }
+
+    .meta-box span{
+      display:block;
+      font-size:.8rem;
+      color:var(--muted);
+      margin-bottom:6px;
+    }
+
+    .meta-box b{
+      font-size:1rem;
+      color:#fff;
+    }
+
+    .actions{
+      display:flex;
+      gap:12px;
+      justify-content:center;
+      flex-wrap:wrap;
+      margin-top:16px;
+    }
+
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      padding:12px 28px;
+      border-radius:12px;
+      border:none;
+      cursor:pointer;
+      font-size:1rem;
+      font-weight:700;
+      transition:.2s ease;
+    }
+
+    .btn-primary{
+      color:#fff;
+      background:linear-gradient(135deg,var(--primary),var(--secondary));
+      box-shadow:0 10px 22px rgba(61,142,240,.35);
+    }
+
+    .btn-primary:hover:not(:disabled){
+      opacity:.92;
+      transform:translateY(-1px);
+    }
+
+    .btn-primary:disabled{
+      opacity:.45;
+      cursor:not-allowed;
+      transform:none;
+      box-shadow:none;
+    }
+
+    .btn-secondary{
+      background:rgba(255,255,255,.08);
+      color:#fff;
+      border:1px solid rgba(255,255,255,.18);
+    }
+
+    .btn-secondary:hover{
+      background:rgba(255,255,255,.14);
+    }
+
+    .progress-wrap{
+      margin-top:18px;
+      display:none;
+    }
+
+    .progress-bar-bg{
+      width:100%;
+      height:12px;
+      background:rgba(255,255,255,.08);
+      border-radius:999px;
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,.08);
+    }
+
+    .progress-bar{
+      height:100%;
+      width:0%;
+      background:linear-gradient(90deg,var(--primary),var(--secondary));
+      border-radius:999px;
+      transition:width .15s linear;
+    }
+
+    .status{
+      margin-top:9px;
+      font-size:.89rem;
+      opacity:.78;
+      text-align:center;
+    }
+
+    .result-section{
+      display:none;
+      margin-top:24px;
+    }
+
+    .speed-note{
+      background:rgba(61,142,240,.1);
+      border:1px solid rgba(61,142,240,.25);
+      border-radius:12px;
+      padding:12px 16px;
+      margin-top:14px;
+      font-size:.88rem;
+      color:#9fc0ff;
+      display:none;
+      line-height:1.6;
+    }
+
+    .info-box{
+      background:var(--card);
+      border-radius:14px;
+      padding:16px 18px;
+      margin-top:18px;
+      font-size:.92rem;
+      opacity:.88;
+      line-height:1.75;
+      border:1px solid rgba(255,255,255,.08);
+    }
+
+    .info-box b{color:#9fb4ff}
+
+    .badge{
+      display:inline-block;
+      background:rgba(0,200,100,.15);
+      color:var(--success);
+      border:1px solid rgba(0,200,100,.3);
+      border-radius:7px;
+      padding:2px 9px;
+      font-size:.78rem;
+      font-weight:700;
+      margin-left:8px;
+      vertical-align:middle;
+      animation:glow 2s ease-in-out infinite;
+    }
+
+    @keyframes glow{
+      0%,100%{opacity:1;text-shadow:0 0 8px rgba(0,255,136,.35)}
+      50%{opacity:.72;text-shadow:0 0 12px rgba(0,255,136,.55)}
+    }
+
+    footer{
+      margin-top:auto;
+      padding:18px 20px 20px;
+      opacity:.42;
+      font-size:.8rem;
+      text-align:center;
+    }
+
+    @media(max-width:700px){
+      .controls-grid,
+      .meta-grid{
+        grid-template-columns:1fr;
+      }
+    }
+
+    @media(max-width:600px){
+      header h1{font-size:1.45rem}
+      .upload-box{padding:32px 14px}
+      .btn{width:100%}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎞️ Video FPS Converter <span class="badge">MANUAL FPS</span></h1>
+    <p>Upload a video, choose target FPS manually, and export locally in your browser</p>
+  </header>
+
+  <div class="container">
+    <div class="upload-box" id="dropZone">
+      <div class="upload-icon">📤</div>
+      <h2>Drop video here or click to select</h2>
+      <p>Manual FPS conversion • Local browser processing • No server upload</p>
+      <input type="file" id="fileInput" accept="video/*">
+    </div>
+
+    <div class="section" id="previewSection" style="display:none;">
+      <div class="panel">
+        <div class="label">Original preview</div>
+        <video id="originalVideo" controls playsinline></video>
+
+        <div class="meta-grid">
+          <div class="meta-box">
+            <span>Resolution</span>
+            <b id="metaResolution">-</b>
+          </div>
+          <div class="meta-box">
+            <span>Duration</span>
+            <b id="metaDuration">-</b>
+          </div>
+          <div class="meta-box">
+            <span>Estimated source FPS</span>
+            <b id="metaInputFps">Unknown</b>
+          </div>
+        </div>
+
+        <div class="controls-grid">
+          <div class="control-card">
+            <div class="control-title">Target FPS</div>
+            <div class="input-row">
+              <input type="number" id="targetFps" min="1" max="120" value="30" />
+              <select id="presetFps">
+                <option value="">Quick presets</option>
+                <option value="24">24 FPS</option>
+                <option value="25">25 FPS</option>
+                <option value="30">30 FPS</option>
+                <option value="50">50 FPS</option>
+                <option value="60">60 FPS</option>
+              </select>
+            </div>
+            <div class="hint">
+              This page re-encodes the video using your selected FPS.
+              Browser-based recording uses MediaRecorder/canvas style workflows, so quality and speed can vary by device and browser.
+            </div>
+          </div>
+
+          <div class="control-card">
+            <div class="control-title">Output behavior</div>
+            <div class="input-row">
+              <label><input type="radio" name="durationMode" id="keepDuration" checked> Keep original duration</label>
+              <label><input type="radio" name="changeSpeed"> Change playback speed with FPS</label>
+            </div>
+            <div class="hint">
+              Keep original duration = same playback length, different encoded frame cadence.
+              Change playback speed = output timing follows selected FPS more literally.
+            </div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-primary" id="convertBtn">⚡ Convert FPS</button>
+          <button class="btn btn-secondary" id="resetBtn">Choose Another</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar-bg">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="status" id="statusText">Processing...</div>
+    </div>
+
+    <div class="result-section" id="resultSection">
+      <div class="panel">
+        <div class="label">Converted output</div>
+        <video id="resultVideo" controls playsinline></video>
+        <div class="actions">
+          <button class="btn btn-primary" id="downloadBtn">⬇ Download</button>
+          <button class="btn btn-secondary" id="convertAnotherBtn">Convert Another</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="speed-note" id="speedNote"></div>
+
+    <div class="info-box">
+      <b>Important:</b> Browser-based FPS conversion is possible using captured canvas streams and MediaRecorder APIs,
+      but very high resolutions or long videos may be slower and heavier than native tools. For bigger files,
+      FFmpeg WASM can be a stronger next upgrade path.
+    </div>
+  </div>
+
+  <footer>Video FPS Converter © 2026 — Manual FPS • Local Processing</footer>
+
+  <script>
+    const $ = id => document.getElementById(id);
+
+    const fileInput = $('fileInput');
+    const dropZone = $('dropZone');
+    const previewSection = $('previewSection');
+    const originalVideo = $('originalVideo');
+    const convertBtn = $('convertBtn');
+    const resetBtn = $('resetBtn');
+    const progressWrap = $('progressWrap');
+    const progressBar = $('progressBar');
+    const statusText = $('statusText');
+    const resultSection = $('resultSection');
+    const resultVideo = $('resultVideo');
+    const downloadBtn = $('downloadBtn');
+    const convertAnotherBtn = $('convertAnotherBtn');
+    const speedNote = $('speedNote');
+    const targetFps = $('targetFps');
+    const presetFps = $('presetFps');
+    const metaResolution = $('metaResolution');
+    const metaDuration = $('metaDuration');
+    const metaInputFps = $('metaInputFps');
+    const keepDuration = $('keepDuration');
+
+    let currentFile = null;
+    let sourcePreviewUrl = null;
+    let resultBlob = null;
+    let resultUrl = null;
+    let processing = false;
+    let sourceMeta = null;
+
+    function setStatus(message, percent){
+      statusText.textContent = message;
+      if(typeof percent === 'number'){
+        progressBar.style.width = percent + '%';
+      }
+    }
+
+    function revokeIfExists(url){
+      if(url) URL.revokeObjectURL(url);
+    }
+
+    function cleanupPreview(){
+      revokeIfExists(sourcePreviewUrl);
+      sourcePreviewUrl = null;
+      originalVideo.removeAttribute('src');
+      originalVideo.load();
+    }
+
+    function cleanupResult(){
+      revokeIfExists(resultUrl);
+      resultUrl = null;
+      resultBlob = null;
+      resultVideo.removeAttribute('src');
+      resultVideo.load();
+    }
+
+    function resetUI(){
+      if(processing) return;
+      currentFile = null;
+      sourceMeta = null;
+      cleanupPreview();
+      cleanupResult();
+      previewSection.style.display = 'none';
+      resultSection.style.display = 'none';
+      progressWrap.style.display = 'none';
+      speedNote.style.display = 'none';
+      progressBar.style.width = '0%';
+      fileInput.value = '';
+      targetFps.value = 30;
+      presetFps.value = '';
+      metaResolution.textContent = '-';
+      metaDuration.textContent = '-';
+      metaInputFps.textContent = 'Unknown';
+      convertBtn.disabled = false;
+    }
+
+    async function readMetadata(file){
+      const tempUrl = URL.createObjectURL(file);
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.src = tempUrl;
+      video.muted = true;
+      video.playsInline = true;
+
+      const meta = await new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => {
+          resolve({
+            duration: video.duration || 0,
+            width: video.videoWidth || 640,
+            height: video.videoHeight || 360
+          });
+        };
+        video.onerror = () => reject(new Error('Could not read video metadata'));
+      });
+
+      revokeIfExists(tempUrl);
+      return meta;
+    }
+
+    async function loadFile(file){
+      if(!file || !file.type.startsWith('video/')){
+        alert('Please select a valid video file.');
+        return;
+      }
+
+      currentFile = file;
+      sourceMeta = await readMetadata(file);
+
+      cleanupPreview();
+      cleanupResult();
+
+      sourcePreviewUrl = URL.createObjectURL(file);
+      originalVideo.src = sourcePreviewUrl;
+
+      metaResolution.textContent = `${sourceMeta.width} × ${sourceMeta.height}`;
+      metaDuration.textContent = `${sourceMeta.duration.toFixed(2)}s`;
+      metaInputFps.textContent = 'Estimated by browser workflow';
+
+      previewSection.style.display = 'block';
+      resultSection.style.display = 'none';
+      progressWrap.style.display = 'none';
+      speedNote.style.display = 'none';
+      progressBar.style.width = '0%';
+    }
+
+    async function extractFrames(file, sampleFps){
+      const tempUrl = URL.createObjectURL(file);
+      const vid = document.createElement('video');
+      vid.preload = 'auto';
+      vid.muted = true;
+      vid.playsInline = true;
+      vid.src = tempUrl;
+
+      await new Promise((resolve, reject) => {
+        vid.onloadedmetadata = resolve;
+        vid.onerror = () => reject(new Error('Failed to load video metadata'));
+      });
+
+      const duration = vid.duration || 0;
+      const width = vid.videoWidth || 640;
+      const height = vid.videoHeight || 360;
+      const totalFrames = Math.max(1, Math.floor(duration * sampleFps));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d', { willReadFrequently:false });
+
+      const frames = [];
+
+      for(let i = 0; i < totalFrames; i++){
+        const t = Math.min(i / sampleFps, Math.max(0, duration - 0.03));
+        vid.currentTime = t;
+
+        await new Promise(res => {
+          vid.onseeked = () => res();
+        });
+
+        ctx.drawImage(vid, 0, 0, width, height);
+        frames.push(canvas.toDataURL('image/jpeg', 0.9));
+
+        if(i % 4 === 0 || i === totalFrames - 1){
+          const pct = 10 + Math.round((i / totalFrames) * 45);
+          setStatus(`Extracting frame ${i + 1}/${totalFrames}`, pct);
+        }
+      }
+
+      revokeIfExists(tempUrl);
+      return { frames, duration, width, height, sampleFps };
+    }
+
+    async function encodeFrames(frames, outputFps, width, height){
+      const outCanvas = document.createElement('canvas');
+      outCanvas.width = width;
+      outCanvas.height = height;
+      const outCtx = outCanvas.getContext('2d');
+
+      const stream = outCanvas.captureStream(outputFps);
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : 'video/webm;codecs=vp8';
+
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: 8_000_000
+      });
+
+      const chunks = [];
+      recorder.ondataavailable = e => {
+        if(e.data.size > 0) chunks.push(e.data);
+      };
+
+      recorder.start();
+
+      const frameDelay = 1000 / outputFps;
+
+      for(let i = 0; i < frames.length; i++){
+        const img = new Image();
+        img.src = frames[i];
+
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = () => reject(new Error('Frame decode failed'));
+        });
+
+        outCtx.clearRect(0, 0, width, height);
+        outCtx.drawImage(img, 0, 0, width, height);
+
+        if(i % 6 === 0 || i === frames.length - 1){
+          const pct = 58 + Math.round((i / frames.length) * 40);
+          setStatus(`Encoding ${i + 1}/${frames.length}`, pct);
+        }
+
+        await new Promise(r => setTimeout(r, frameDelay));
+      }
+
+      recorder.stop();
+
+      await new Promise(resolve => {
+        recorder.onstop = resolve;
+      });
+
+      return new Blob(chunks, { type: mimeType });
+    }
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('drag');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('drag');
+    });
+
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag');
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if(f) loadFile(f).catch(err => alert(err.message));
+    });
+
+    fileInput.addEventListener('change', () => {
+      if(fileInput.files && fileInput.files[0]){
+        loadFile(fileInput.files[0]).catch(err => alert(err.message));
+      }
+    });
+
+    presetFps.addEventListener('change', () => {
+      if(presetFps.value) targetFps.value = presetFps.value;
+    });
+
+    resetBtn.addEventListener('click', resetUI);
+
+    convertAnotherBtn.addEventListener('click', () => {
+      if(processing) return;
+      cleanupResult();
+      resultSection.style.display = 'none';
+      speedNote.style.display = 'none';
+      progressWrap.style.display = 'none';
+      progressBar.style.width = '0%';
+    });
+
+    convertBtn.addEventListener('click', async () => {
+      if(!currentFile || processing) return;
+
+      const desiredFps = parseFloat(targetFps.value);
+      if(!desiredFps || desiredFps < 1 || desiredFps > 120){
+        alert('Enter a valid FPS between 1 and 120.');
+        return;
+      }
+
+      processing = true;
+      convertBtn.disabled = true;
+      progressWrap.style.display = 'block';
+      resultSection.style.display = 'none';
+      speedNote.style.display = 'none';
+      setStatus('Reading source video...', 5);
+
+      const startTime = Date.now();
+
+      try{
+        const sampleFps = keepDuration.checked
+          ? desiredFps
+          : Math.min(60, Math.max(12, Math.round(desiredFps)));
+
+        const { frames, duration, width, height } = await extractFrames(currentFile, sampleFps);
+
+        setStatus('Preparing output...', 55);
+
+        const outputFrames = frames.slice();
+
+        setStatus('Encoding converted FPS video...', 58);
+        const blob = await encodeFrames(outputFrames, desiredFps, width, height);
+
+        cleanupResult();
+        resultBlob = blob;
+        resultUrl = URL.createObjectURL(blob);
+        resultVideo.src = resultUrl;
+
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        progressWrap.style.display = 'none';
+        resultSection.style.display = 'block';
+        speedNote.style.display = 'block';
+        speedNote.textContent =
+          `✅ Done in ${elapsed}s • ${width}x${height} • Output FPS: ${desiredFps} • Source duration: ${duration.toFixed(2)}s`;
+      } catch(err){
+        console.error(err);
+        setStatus('Error: ' + (err?.message || 'failed'), 0);
+      } finally {
+        processing = false;
+        convertBtn.disabled = false;
+      }
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      if(!resultBlob) return;
+
+      const a = document.createElement('a');
+      a.href = resultUrl;
+      const baseName = currentFile
+        ? currentFile.name.replace(/\.[^.]+$/, '')
+        : 'video';
+
+      a.download = `${baseName}_${targetFps.value}fps.webm`;
+      a.click();
+    });
+  </script>
+</body>
+</html>

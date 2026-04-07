@@ -170,6 +170,11 @@
       min-width:120px;
     }
 
+    .input-row input[type="checkbox"],
+    .input-row input[type="radio"]{
+      accent-color:#7ea7ff;
+    }
+
     .input-row label{
       display:flex;
       align-items:center;
@@ -185,6 +190,31 @@
       color:var(--muted);
       margin-top:8px;
       line-height:1.5;
+    }
+
+    .manual-cadence-box{
+      margin-top:12px;
+      padding:12px;
+      border-radius:12px;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      display:none;
+    }
+
+    .manual-cadence-box .input-row{
+      margin-top:8px;
+    }
+
+    .cadence-chip{
+      display:inline-block;
+      margin-top:10px;
+      padding:8px 12px;
+      border-radius:999px;
+      background:rgba(61,142,240,.16);
+      border:1px solid rgba(61,142,240,.32);
+      color:#a8c5ff;
+      font-size:.86rem;
+      font-weight:700;
     }
 
     .meta-grid{
@@ -364,13 +394,16 @@
       header h1{font-size:1.45rem}
       .upload-box{padding:32px 14px}
       .btn{width:100%}
+      .manual-cadence-box .input-row span{
+        width:100%;
+      }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>🎞️ Video FPS Converter <span class="badge">EXACT DURATION HACK</span></h1>
-    <p>Upload a video, choose target FPS manually, and keep duration as close as possible</p>
+    <h1>🎞️ Video FPS Converter <span class="badge">MANUAL CADENCE</span></h1>
+    <p>Use direct FPS or set custom frames per seconds manually</p>
   </header>
 
   <div class="container">
@@ -401,16 +434,17 @@
             <b id="metaDuration">-</b>
           </div>
           <div class="meta-box">
-            <span>Target FPS</span>
+            <span>Effective FPS</span>
             <b id="metaTargetFps">30</b>
           </div>
         </div>
 
         <div class="controls-grid">
           <div class="control-card">
-            <div class="control-title">Target FPS</div>
+            <div class="control-title">Frame rate control</div>
+
             <div class="input-row">
-              <input type="number" id="targetFps" min="1" max="120" value="30" />
+              <input type="number" id="targetFps" min="0.1" max="120" step="0.1" value="30" />
               <select id="presetFps">
                 <option value="">Quick presets</option>
                 <option value="24">24 FPS</option>
@@ -420,8 +454,33 @@
                 <option value="60">60 FPS</option>
               </select>
             </div>
+
+            <div class="input-row" style="margin-top:12px;">
+              <label>
+                <input type="checkbox" id="useManualCadence">
+                Use manual frames / seconds
+              </label>
+            </div>
+
+            <div class="manual-cadence-box" id="manualCadenceBox">
+              <div class="hint" style="margin-top:0;">
+                Set custom cadence like 3 frames per 1 second, 1 frame per 2 seconds, 12 frames per 5 seconds.
+              </div>
+
+              <div class="input-row">
+                <input type="number" id="manualFrames" min="1" step="1" value="3">
+                <span>frames per</span>
+                <input type="number" id="manualSeconds" min="0.1" step="0.1" value="1">
+                <span>seconds</span>
+              </div>
+
+              <div class="cadence-chip" id="effectiveFpsChip">
+                Effective FPS: <span id="effectiveFpsText">3</span>
+              </div>
+            </div>
+
             <div class="hint">
-              Keep original duration mode uses fixed output frame count and manual requestFrame scheduling to minimize drift in MediaRecorder-based export. [web:161][web:165]
+              Current page originally uses direct Target FPS input only; this version adds manual cadence mode on top of that flow. [page:140]
             </div>
           </div>
 
@@ -432,7 +491,7 @@
               <label><input type="radio" name="durationMode" id="changeSpeed" value="speed"> Change playback speed</label>
             </div>
             <div class="hint">
-              Keep original duration maps source timestamps onto a target frame timeline. Change playback speed replays extracted frames directly at target FPS. [web:69][web:161]
+              Keep original duration maps source timestamps onto a target frame timeline. Change playback speed replays extracted frames directly at effective FPS. [page:140]
             </div>
           </div>
         </div>
@@ -465,11 +524,11 @@
     <div class="speed-note" id="speedNote"></div>
 
     <div class="info-box">
-      <b>Important:</b> This is the strongest practical MediaRecorder workaround, not a true FFmpeg-grade exact-duration encoder. The browser recorder still has realtime limitations and may drift slightly. [web:64][web:69][web:160]
+      <b>Important:</b> This version is still based on the same browser-only MediaRecorder approach, so manual cadence control can be added cleanly, but recorder timing limitations still remain in the browser pipeline. [page:140]
     </div>
   </div>
 
-  <footer>Video FPS Converter © 2026 — MediaRecorder Exact-Duration Workaround</footer>
+  <footer>Video FPS Converter © 2026 — Manual Frames / Seconds</footer>
 
   <script>
     const $ = id => document.getElementById(id);
@@ -491,6 +550,7 @@
     const downloadBtn = $('downloadBtn');
     const convertAnotherBtn = $('convertAnotherBtn');
     const speedNote = $('speedNote');
+
     const targetFps = $('targetFps');
     const presetFps = $('presetFps');
     const metaResolution = $('metaResolution');
@@ -498,6 +558,12 @@
     const metaTargetFps = $('metaTargetFps');
     const keepDuration = $('keepDuration');
     const changeSpeed = $('changeSpeed');
+
+    const useManualCadence = $('useManualCadence');
+    const manualCadenceBox = $('manualCadenceBox');
+    const manualFrames = $('manualFrames');
+    const manualSeconds = $('manualSeconds');
+    const effectiveFpsText = $('effectiveFpsText');
 
     let currentFile = null;
     let sourcePreviewUrl = null;
@@ -523,6 +589,37 @@
       if (bytes === 0) return '0 B';
       const i = Math.floor(Math.log(bytes) / Math.log(1024));
       return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
+    }
+
+    function formatFpsValue(value){
+      if (!isFinite(value)) return '-';
+      return value.toFixed(3).replace(/\.?0+$/, '');
+    }
+
+    function getEffectiveFps() {
+      if (!useManualCadence.checked) {
+        return parseFloat(targetFps.value);
+      }
+
+      const frames = parseFloat(manualFrames.value);
+      const seconds = parseFloat(manualSeconds.value);
+
+      if (!frames || !seconds || frames <= 0 || seconds <= 0) return NaN;
+
+      return frames / seconds;
+    }
+
+    function updateCadenceUI() {
+      const manual = useManualCadence.checked;
+      manualCadenceBox.style.display = manual ? 'block' : 'none';
+      targetFps.disabled = manual;
+      presetFps.disabled = manual;
+
+      const fps = getEffectiveFps();
+      const formatted = formatFpsValue(fps);
+
+      effectiveFpsText.textContent = formatted;
+      metaTargetFps.textContent = formatted;
     }
 
     function cleanupPreview(){
@@ -559,7 +656,11 @@
       metaDuration.textContent = '-';
       metaTargetFps.textContent = '30';
       keepDuration.checked = true;
+      useManualCadence.checked = false;
+      manualFrames.value = 3;
+      manualSeconds.value = 1;
       convertBtn.disabled = false;
+      updateCadenceUI();
       setStatus('Waiting for file...', 0);
     }
 
@@ -607,7 +708,7 @@
 
       metaResolution.textContent = `${sourceMeta.width} × ${sourceMeta.height}`;
       metaDuration.textContent = `${sourceMeta.duration.toFixed(2)}s`;
-      metaTargetFps.textContent = targetFps.value;
+      metaTargetFps.textContent = formatFpsValue(getEffectiveFps());
 
       previewSection.style.display = 'block';
       resultSection.style.display = 'none';
@@ -793,15 +894,21 @@
     });
 
     presetFps.addEventListener('change', () => {
-      if(presetFps.value) {
+      if(!useManualCadence.checked && presetFps.value) {
         targetFps.value = presetFps.value;
         metaTargetFps.textContent = presetFps.value;
       }
     });
 
     targetFps.addEventListener('input', () => {
-      metaTargetFps.textContent = targetFps.value || '-';
+      if(!useManualCadence.checked){
+        metaTargetFps.textContent = formatFpsValue(parseFloat(targetFps.value));
+      }
     });
+
+    useManualCadence.addEventListener('change', updateCadenceUI);
+    manualFrames.addEventListener('input', updateCadenceUI);
+    manualSeconds.addEventListener('input', updateCadenceUI);
 
     resetBtn.addEventListener('click', resetUI);
 
@@ -818,9 +925,9 @@
     convertBtn.addEventListener('click', async () => {
       if(!currentFile || processing) return;
 
-      const desiredFps = parseFloat(targetFps.value);
-      if(!desiredFps || desiredFps < 1 || desiredFps > 120){
-        alert('Enter a valid FPS between 1 and 120.');
+      const desiredFps = getEffectiveFps();
+      if(!desiredFps || desiredFps <= 0 || desiredFps > 120){
+        alert('Enter a valid frame/second combination.');
         return;
       }
 
@@ -877,7 +984,7 @@
         const drift = (parseFloat(outputDuration) - duration).toFixed(3);
 
         speedNote.textContent =
-          `✅ Done in ${elapsed}s • ${width}x${height} • Output FPS: ${desiredFps} • Source duration: ${duration.toFixed(3)}s • Target output duration: ${outputDuration}s • Timeline drift estimate: ${drift}s`;
+          `✅ Done in ${elapsed}s • ${width}x${height} • Effective FPS: ${formatFpsValue(desiredFps)} • Source duration: ${duration.toFixed(3)}s • Target output duration: ${outputDuration}s • Timeline drift estimate: ${drift}s`;
       } catch(err){
         console.error(err);
         setStatus('Error: ' + (err?.message || 'failed'), 0);
@@ -896,7 +1003,8 @@
         ? currentFile.name.replace(/\.[^.]+$/, '')
         : 'video';
 
-      a.download = `${baseName}_${targetFps.value}fps_exact_hack.webm`;
+      const fpsText = formatFpsValue(getEffectiveFps()).replace(/\./g, '_');
+      a.download = `${baseName}_${fpsText}fps_manual.webm`;
       a.click();
     });
 
